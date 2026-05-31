@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request, Response
+from opentelemetry.trace import SpanKind
 
 from grantora import __version__
 from grantora.adapters import create_default_adapter_registry
@@ -17,6 +18,7 @@ from grantora.config import Settings, get_settings
 from grantora.db import Database
 from grantora.logging import configure_logging
 from grantora.metrics import now, record_http_request, render_metrics
+from grantora.tracing import TraceManager, create_trace_manager, span_ids
 
 LOGGER = logging.getLogger("grantora.http")
 APISIX_SYNC_LOGGER = logging.getLogger("grantora.apisix.sync")
@@ -30,10 +32,15 @@ def create_apisix_admin_client(settings: Settings) -> ApisixAdminClient:
     )
 
 
-def create_app(settings: Settings | None = None, database: Database | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    database: Database | None = None,
+    trace_manager: TraceManager | None = None,
+) -> FastAPI:
     resolved_settings = settings or get_settings()
     configure_logging(resolved_settings)
     resolved_database = database or Database(resolved_settings)
+    resolved_trace_manager = trace_manager or create_trace_manager(resolved_settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -53,6 +60,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
                 with suppress(asyncio.CancelledError):
                     await apisix_sync_task
             app.state.database.dispose()
+            app.state.trace_manager.shutdown()
 
     app = FastAPI(
         title="Grantora Gateway API",
@@ -68,39 +76,60 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
         started_at = now()
         request_id = request.headers.get(resolved_settings.request_id_header) or create_request_id()
         request.state.request_id = request_id
-        try:
-            response = await call_next(request)
-        except Exception:
+        with resolved_trace_manager.start_as_current_span(
+            "http.request",
+            carrier=_trace_carrier(request),
+            kind=SpanKind.SERVER,
+            attributes={
+                "http.request.method": request.method,
+                "url.path": request.url.path,
+                "grantora.request_id": request_id,
+            },
+        ) as span:
+            trace_id, request_span_id = span_ids(span)
+            request.state.trace_id = trace_id
+            request.state.span_id = request_span_id
+            try:
+                response = await call_next(request)
+            except Exception:
+                _set_span_request_attributes(span, request, request_id, status_code=500)
+                record_http_request(
+                    started_at=started_at,
+                    status_code=500,
+                    workspace=getattr(request.state, "workspace_id", None),
+                    agent=getattr(request.state, "agent_id", None),
+                    user=getattr(request.state, "user_id", None),
+                    capability=getattr(request.state, "capability_id", None),
+                    provider=getattr(request.state, "provider_type", None),
+                )
+                LOGGER.exception(
+                    "request failed",
+                    extra=_request_log_context(request, request_id, 500, started_at),
+                )
+                raise
+
+            response.headers[resolved_settings.request_id_header] = request_id
+            resolved_trace_manager.inject_current_context(response.headers)
+            _set_span_request_attributes(
+                span,
+                request,
+                request_id,
+                status_code=response.status_code,
+            )
             record_http_request(
                 started_at=started_at,
-                status_code=500,
+                status_code=response.status_code,
                 workspace=getattr(request.state, "workspace_id", None),
                 agent=getattr(request.state, "agent_id", None),
                 user=getattr(request.state, "user_id", None),
                 capability=getattr(request.state, "capability_id", None),
                 provider=getattr(request.state, "provider_type", None),
             )
-            LOGGER.exception(
-                "request failed",
-                extra=_request_log_context(request, request_id, 500, started_at),
+            LOGGER.info(
+                "request completed",
+                extra=_request_log_context(request, request_id, response.status_code, started_at),
             )
-            raise
-
-        response.headers[resolved_settings.request_id_header] = request_id
-        record_http_request(
-            started_at=started_at,
-            status_code=response.status_code,
-            workspace=getattr(request.state, "workspace_id", None),
-            agent=getattr(request.state, "agent_id", None),
-            user=getattr(request.state, "user_id", None),
-            capability=getattr(request.state, "capability_id", None),
-            provider=getattr(request.state, "provider_type", None),
-        )
-        LOGGER.info(
-            "request completed",
-            extra=_request_log_context(request, request_id, response.status_code, started_at),
-        )
-        return response
+            return response
 
     if resolved_settings.metrics_enabled:
 
@@ -113,6 +142,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
     app.state.database = resolved_database
     app.state.adapters = create_default_adapter_registry(resolved_settings)
     app.state.apisix_client_factory = create_apisix_admin_client
+    app.state.trace_manager = resolved_trace_manager
     app.add_exception_handler(GrantoraAPIError, grantora_api_error_handler)
     app.include_router(health_router)
     app.include_router(runtime_router)
@@ -131,28 +161,47 @@ async def _run_apisix_sync_once(app: FastAPI) -> None:
     settings: Settings = app.state.settings
     database: Database = app.state.database
     client_factory = app.state.apisix_client_factory
-    try:
-        with database.session_factory() as session:
-            async with client_factory(settings) as apisix_client:
-                result = await reconcile_apisix_routes(session, settings, apisix_client)
-    except Exception:
-        APISIX_SYNC_LOGGER.error(
-            "automatic APISIX sync failed",
-            extra={"error_code": "apisix_sync_failed"},
-        )
-        return
+    trace_manager: TraceManager = app.state.trace_manager
+    with trace_manager.start_as_current_span(
+        "apisix.sync",
+        kind=SpanKind.INTERNAL,
+        attributes={"grantora.component": "apisix"},
+    ) as span:
+        try:
+            with database.session_factory() as session:
+                async with client_factory(settings) as apisix_client:
+                    result = await reconcile_apisix_routes(session, settings, apisix_client)
+        except Exception:
+            if span.is_recording():
+                span.set_attribute("grantora.apisix.status", "error")
+                span.set_attribute("grantora.apisix.error_code", "apisix_sync_failed")
+            APISIX_SYNC_LOGGER.error(
+                "automatic APISIX sync failed",
+                extra={"error_code": "apisix_sync_failed"},
+            )
+            return
 
-    if result.status == "error":
-        APISIX_SYNC_LOGGER.warning(
-            "automatic APISIX sync completed with error",
-            extra={"error_code": result.error_code, "checked_routes": result.checked_routes},
-        )
-        return
+        if span.is_recording():
+            span.set_attribute("grantora.apisix.status", result.status)
+            span.set_attribute("grantora.apisix.checked_routes", result.checked_routes)
+            span.set_attribute("grantora.apisix.changed_routes", result.changed_routes)
+            if result.error_code is not None:
+                span.set_attribute("grantora.apisix.error_code", result.error_code)
 
-    APISIX_SYNC_LOGGER.info(
-        "automatic APISIX sync completed",
-        extra={"checked_routes": result.checked_routes, "changed_routes": result.changed_routes},
-    )
+        if result.status == "error":
+            APISIX_SYNC_LOGGER.warning(
+                "automatic APISIX sync completed with error",
+                extra={"error_code": result.error_code, "checked_routes": result.checked_routes},
+            )
+            return
+
+        APISIX_SYNC_LOGGER.info(
+            "automatic APISIX sync completed",
+            extra={
+                "checked_routes": result.checked_routes,
+                "changed_routes": result.changed_routes,
+            },
+        )
 
 
 def _request_log_context(
@@ -163,12 +212,47 @@ def _request_log_context(
 ) -> dict[str, object]:
     return {
         "request_id": request_id,
+        "trace_id": getattr(request.state, "trace_id", None),
+        "span_id": getattr(request.state, "span_id", None),
         "workspace_id": getattr(request.state, "workspace_id", None),
         "agent_id": getattr(request.state, "agent_id", None),
         "user_id": getattr(request.state, "user_id", None),
         "capability_id": getattr(request.state, "capability_id", None),
+        "provider_type": getattr(request.state, "provider_type", None),
         "method": request.method,
         "path": request.url.path,
         "status_code": status_code,
         "duration_ms": max(int((now() - started_at) * 1000), 0),
     }
+
+
+def _set_span_request_attributes(
+    span: object,
+    request: Request,
+    request_id: str,
+    *,
+    status_code: int,
+) -> None:
+    if not hasattr(span, "is_recording") or not span.is_recording():
+        return
+
+    span.set_attribute("http.response.status_code", status_code)
+    span.set_attribute("grantora.request_id", request_id)
+    for attribute, value in (
+        ("grantora.workspace_id", getattr(request.state, "workspace_id", None)),
+        ("grantora.agent_id", getattr(request.state, "agent_id", None)),
+        ("grantora.user_id", getattr(request.state, "user_id", None)),
+        ("grantora.capability_id", getattr(request.state, "capability_id", None)),
+        ("grantora.provider_type", getattr(request.state, "provider_type", None)),
+    ):
+        if value is not None:
+            span.set_attribute(attribute, value)
+
+
+def _trace_carrier(request: Request) -> dict[str, str]:
+    carrier: dict[str, str] = {}
+    for header in ("traceparent", "tracestate"):
+        value = request.headers.get(header)
+        if value:
+            carrier[header] = value
+    return carrier

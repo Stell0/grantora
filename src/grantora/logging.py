@@ -20,11 +20,16 @@ class JsonLogFormatter(logging.Formatter):
         }
         for field in (
             "request_id",
+            "trace_id",
+            "span_id",
             "workspace_id",
             "agent_id",
             "user_id",
             "capability_id",
+            "provider_type",
             "decision",
+            "outcome",
+            "usage_status",
             "error_code",
             "method",
             "path",

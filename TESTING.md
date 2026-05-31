@@ -15,6 +15,8 @@ make lint
 make format
 make demo-seed
 make smoke
+make retention RETENTION_FLAGS=--dry-run
+make backup-restore-smoke
 ```
 
 Until the Makefile exists, use direct tool commands such as `pytest`, `ruff check`, `ruff format --check` and `alembic upgrade head`.
@@ -24,6 +26,8 @@ Until the Makefile exists, use direct tool commands such as `pytest`, `ruff chec
 `make test-integration` loads `.env` and runs `tests/integration/`. Tests skip when `GRANTORA_INTEGRATION_DATABASE_URL` or `GRANTORA_INTEGRATION_APISIX_ADMIN_URL` is absent. If those variables are set, unavailable PostgreSQL or APISIX services are test failures.
 
 `make test-e2e` loads `.env` and runs `tests/e2e/`. Tests skip unless `GRANTORA_RUN_E2E=1` and `ADMIN_BOOTSTRAP_TOKEN` are set. Once enabled, the suite expects the direct API and APISIX public URL to be reachable and fails on infrastructure errors.
+
+`make backup-restore-smoke` is destructive and should only be used against disposable compose data. The opt-in e2e coverage skips unless `GRANTORA_RUN_BACKUP_RESTORE_SMOKE=1` is set.
 
 ## Unit Tests
 
@@ -40,8 +44,11 @@ Required areas:
 - Standard error response formatting
 - Metrics endpoint exposure and counter increments
 - Structured JSON request logs without authorization headers or secrets
+- Structured JSON runtime decision logs for denied and failed invocation paths
+- Optional OpenTelemetry span emission with safe identifiers only
 - Revoked secret exclusion during secret resolution
 - Upstream timeout and maximum response size enforcement
+- Audit and usage retention pruning commands
 
 ## Integration Tests
 
@@ -81,11 +88,13 @@ Required flows:
 - Audit event is created for every invocation attempt.
 - Usage event is created for success, denied and error outcomes.
 - APISIX route reconciliation is idempotent.
+- Backup and restore smoke can recreate PostgreSQL state and still invoke the demo capability.
 
 Current e2e environment variables:
 
 ```text
 GRANTORA_RUN_E2E=1
+GRANTORA_RUN_BACKUP_RESTORE_SMOKE=1
 ADMIN_BOOTSTRAP_TOKEN=<plaintext bootstrap token for local operator commands>
 GRANTORA_E2E_API_URL=http://localhost:8080
 GRANTORA_E2E_RUNTIME_URL=http://localhost:9080

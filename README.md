@@ -22,6 +22,7 @@ cp .env.example .env
 docker compose up --build -d
 make demo-seed
 make smoke
+make retention RETENTION_FLAGS=--dry-run
 ```
 
 The compose file starts `grantora-api`, `postgres`, `apisix` and `apisix-etcd`. When `MIGRATIONS_AUTO_RUN=true`, the API container runs Alembic migrations before starting the FastAPI app factory from `src/grantora/main.py`.
@@ -34,9 +35,18 @@ Test tiers:
 make test-unit
 make test-integration
 make test-e2e
+make backup-restore-smoke
 ```
 
-Integration and e2e tests skip external infrastructure checks unless the documented `GRANTORA_INTEGRATION_*` or `GRANTORA_RUN_E2E=1` environment variables are set. Provider adapter integration tests use mock `httpx` transports and do not contact real upstream services.
+Integration and e2e tests skip external infrastructure checks unless the documented `GRANTORA_INTEGRATION_*`, `GRANTORA_RUN_E2E=1`, or `GRANTORA_RUN_BACKUP_RESTORE_SMOKE=1` environment variables are set. Provider adapter integration tests use mock `httpx` transports and do not contact real upstream services.
+
+## Operations
+
+Retention is managed with `make retention`. Use `RETENTION_FLAGS=--dry-run` first to inspect how many audit and usage rows would be pruned before deleting old records.
+
+Tracing is optional and disabled by default. Set `OTEL_TRACING_ENABLED=true`, keep `OTEL_SERVICE_NAME=grantora` or a deployment-specific value, and optionally point `OTEL_EXPORTER_OTLP_ENDPOINT` at an OTLP/HTTP collector. Grantora only records safe identifiers such as request ids, status codes and workspace or capability ids; it does not emit tokens, authorization headers or request payloads into spans.
+
+`make backup-restore-smoke` exercises the documented PostgreSQL dump and restore path, then reruns APISIX sync and a demo invocation. The opt-in pytest equivalent is gated behind `GRANTORA_RUN_BACKUP_RESTORE_SMOKE=1` because it tears down local compose volumes.
 
 Supported real provider templates currently include `nethvoice.phonebook.search` and `nextcloud.files.search`. Admins can list templates with `GET /v1/admin/capability-templates` and create a capability with `POST /v1/admin/capabilities/from-template`.
 
@@ -77,4 +87,4 @@ For deployments where APISIX terminates TLS, set `GRANTORA_PUBLIC_BASE_URL` to t
 
 ## Development Status
 
-Status: Milestone 14 APISIX production data-plane implemented. See [PLAN.md](PLAN.md) for the current roadmap status.
+Status: Milestone 15 observability, retention and operations implemented. See [PLAN.md](PLAN.md) for the current roadmap status.

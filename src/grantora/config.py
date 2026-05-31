@@ -81,6 +81,19 @@ class Settings(BaseSettings):
         validation_alias="APISIX_RATE_LIMIT_TIME_WINDOW",
     )
     metrics_enabled: bool = Field(default=True, validation_alias="METRICS_ENABLED")
+    audit_retention_days: int = Field(default=365, gt=0, validation_alias="AUDIT_RETENTION_DAYS")
+    usage_retention_days: int = Field(default=365, gt=0, validation_alias="USAGE_RETENTION_DAYS")
+    otel_tracing_enabled: bool = Field(default=False, validation_alias="OTEL_TRACING_ENABLED")
+    otel_service_name: str = Field(default="grantora", validation_alias="OTEL_SERVICE_NAME")
+    otel_exporter_otlp_endpoint: str | None = Field(
+        default=None,
+        validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT",
+    )
+    otel_exporter_otlp_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        validation_alias="OTEL_EXPORTER_OTLP_TIMEOUT_SECONDS",
+    )
     request_id_header: str = Field(default="X-Request-Id", validation_alias="REQUEST_ID_HEADER")
     default_request_timeout_seconds: float = Field(
         default=30.0,

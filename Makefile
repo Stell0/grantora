@@ -1,4 +1,4 @@
-.PHONY: test test-unit test-integration test-e2e test-all lint format format-check migrate demo-seed smoke dev-up dev-down
+.PHONY: test test-unit test-integration test-e2e test-all lint format format-check migrate demo-seed smoke retention backup-restore-smoke dev-up dev-down
 
 test:
 	pytest
@@ -46,6 +46,19 @@ smoke:
 	[ ! -f .grantora-demo.env ] || . ./.grantora-demo.env; \
 	set +a; \
 	PYTHONPATH=src$${PYTHONPATH:+:$${PYTHONPATH}} python -m grantora.cli.smoke
+
+retention:
+	@set -a; \
+	[ ! -f .env ] || . ./.env; \
+	set +a; \
+	PYTHONPATH=src$${PYTHONPATH:+:$${PYTHONPATH}} python -m grantora.cli.retention
+
+backup-restore-smoke:
+	@set -a; \
+	[ ! -f .env ] || . ./.env; \
+	[ ! -f .grantora-demo.env ] || . ./.grantora-demo.env; \
+	set +a; \
+	PYTHONPATH=src$${PYTHONPATH:+:$${PYTHONPATH}} python -m grantora.cli.backup_restore_smoke
 
 dev-up:
 	docker compose up --build

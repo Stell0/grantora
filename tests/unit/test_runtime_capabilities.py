@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +10,7 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from prometheus_client.parser import text_string_to_metric_families
 from sqlalchemy import select
 
 from grantora.adapters import AdapterResult, HealthResult, InvocationContext, SecretMaterial
@@ -29,6 +31,7 @@ from grantora.db.models import (
     User,
     Workspace,
 )
+from grantora.logging import JsonLogFormatter
 from grantora.main import create_app
 from grantora.openapi import build_mcp_tool_list
 from grantora.secrets import SecretCipher
@@ -752,6 +755,202 @@ def test_adapter_error_is_returned_safely_and_records_error_usage(
     assert usage_event.status == "error"
 
 
+def test_runtime_metrics_cover_secret_resolution_success_denial_and_adapter_errors(
+    api_context: APIContext,
+) -> None:
+    records = add_runtime_records(api_context)
+    success_request_labels = {
+        "workspace": str(records.workspace_id),
+        "agent": str(records.agent_id),
+        "user": str(records.user_id),
+        "capability": records.capability_id,
+        "status": "200",
+    }
+    denied_labels = {
+        "workspace": str(records.workspace_id),
+        "reason": "capability_denied",
+    }
+    secret_not_found_labels = {
+        "workspace": str(records.workspace_id),
+        "provider": "mock",
+        "result": "not_found",
+    }
+    secret_success_labels = {
+        "workspace": str(records.workspace_id),
+        "provider": "mock",
+        "result": "success",
+    }
+    upstream_success_labels = {
+        "workspace": str(records.workspace_id),
+        "provider": "mock",
+        "status": "200",
+    }
+    upstream_error_labels = {
+        "workspace": str(records.workspace_id),
+        "provider": "mock",
+        "error_code": "upstream_timeout",
+    }
+    before_metrics = api_context.client.get("/metrics").text
+
+    missing_secret_response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.search",
+        headers={
+            **authorization_headers("grt_agent_runtime"),
+            "X-Request-Id": "req_metrics_no_secret",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+    add_secret(
+        api_context,
+        records,
+        owner_type="user",
+        owner_id=records.user_id,
+        value="user-token",
+    )
+    api_context.adapter.next_result = AdapterResult.ok(
+        {"contacts": []},
+        usage_units=2,
+        upstream_status=200,
+    )
+    success_response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.search",
+        headers={
+            **authorization_headers("grt_agent_runtime"),
+            "X-Request-Id": "req_metrics_success",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+    add_user(api_context, records.workspace_id, "bob", "Bob")
+    denied_response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.search",
+        headers={
+            **authorization_headers("grt_agent_runtime"),
+            "X-Request-Id": "req_metrics_denied",
+        },
+        json={"user": "bob", "input": {"query": "Mario"}},
+    )
+    api_context.adapter.next_result = AdapterResult.error(
+        "upstream_timeout",
+        "The upstream application timed out",
+        upstream_status=504,
+        retryable=True,
+    )
+    adapter_error_response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.search",
+        headers={
+            **authorization_headers("grt_agent_runtime"),
+            "X-Request-Id": "req_metrics_error",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+    after_metrics = api_context.client.get("/metrics").text
+
+    assert missing_secret_response.status_code == 424
+    assert success_response.status_code == 200
+    assert denied_response.status_code == 403
+    assert adapter_error_response.status_code == 502
+    assert metric_value(after_metrics, "grantora_requests_total", success_request_labels) == (
+        metric_value(before_metrics, "grantora_requests_total", success_request_labels) + 1
+    )
+    assert metric_value(after_metrics, "grantora_authorization_denied_total", denied_labels) == (
+        metric_value(before_metrics, "grantora_authorization_denied_total", denied_labels) + 1
+    )
+    assert metric_value(
+        after_metrics,
+        "grantora_secret_resolution_total",
+        secret_not_found_labels,
+    ) == (
+        metric_value(
+            before_metrics,
+            "grantora_secret_resolution_total",
+            secret_not_found_labels,
+        )
+        + 1
+    )
+    assert metric_value(
+        after_metrics,
+        "grantora_secret_resolution_total",
+        secret_success_labels,
+    ) == (
+        metric_value(before_metrics, "grantora_secret_resolution_total", secret_success_labels) + 2
+    )
+    assert metric_value(
+        after_metrics,
+        "grantora_upstream_requests_total",
+        upstream_success_labels,
+    ) == (
+        metric_value(
+            before_metrics,
+            "grantora_upstream_requests_total",
+            upstream_success_labels,
+        )
+        + 1
+    )
+    assert metric_value(after_metrics, "grantora_upstream_errors_total", upstream_error_labels) == (
+        metric_value(before_metrics, "grantora_upstream_errors_total", upstream_error_labels) + 1
+    )
+    assert "user-token" not in after_metrics
+
+
+def test_runtime_denied_and_failed_invocations_emit_structured_logs(
+    api_context: APIContext,
+    caplog,
+) -> None:
+    records = add_runtime_records(api_context)
+    add_secret(
+        api_context,
+        records,
+        owner_type="user",
+        owner_id=records.user_id,
+        value="user-token",
+    )
+    add_user(api_context, records.workspace_id, "bob", "Bob")
+
+    with caplog.at_level(logging.INFO, logger="grantora.runtime"):
+        denied_response = api_context.client.post(
+            "/v1/invoke/mock.phonebook.search",
+            headers={
+                **authorization_headers("grt_agent_runtime"),
+                "X-Request-Id": "req_log_denied",
+            },
+            json={"user": "bob", "input": {"query": "Mario"}},
+        )
+        api_context.adapter.next_result = AdapterResult.error(
+            "upstream_timeout",
+            "The upstream application timed out",
+            upstream_status=504,
+            retryable=True,
+        )
+        error_response = api_context.client.post(
+            "/v1/invoke/mock.phonebook.search",
+            headers={
+                **authorization_headers("grt_agent_runtime"),
+                "X-Request-Id": "req_log_error",
+            },
+            json={"user": "alice", "input": {"query": "Mario"}},
+        )
+
+    assert denied_response.status_code == 403
+    assert error_response.status_code == 502
+    runtime_logs = [record for record in caplog.records if record.name == "grantora.runtime"]
+    denied_log = next(record for record in runtime_logs if record.request_id == "req_log_denied")
+    error_log = next(record for record in runtime_logs if record.request_id == "req_log_error")
+    denied_payload = json.loads(JsonLogFormatter().format(denied_log))
+    error_payload = json.loads(JsonLogFormatter().format(error_log))
+    encoded_logs = json.dumps([denied_payload, error_payload], sort_keys=True)
+
+    assert denied_payload["decision"] == "deny"
+    assert denied_payload["outcome"] == "error"
+    assert denied_payload["error_code"] == "capability_denied"
+    assert denied_payload["usage_status"] == "denied"
+    assert error_payload["decision"] == "allow"
+    assert error_payload["outcome"] == "error"
+    assert error_payload["error_code"] == "upstream_timeout"
+    assert error_payload["usage_status"] == "error"
+    assert "user-token" not in encoded_logs
+    assert "Authorization" not in encoded_logs
+
+
 def make_test_settings(tmp_path: Path) -> Settings:
     pepper = "test-token-pepper"
     return Settings(
@@ -765,6 +964,14 @@ def make_test_settings(tmp_path: Path) -> Settings:
 
 def authorization_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def metric_value(metrics_text: str, metric_name: str, labels: dict[str, str]) -> float:
+    for family in text_string_to_metric_families(metrics_text):
+        for sample in family.samples:
+            if sample.name == metric_name and sample.labels == labels:
+                return float(sample.value)
+    return 0.0
 
 
 def load_json_fixture(filename: str) -> dict[str, Any]:

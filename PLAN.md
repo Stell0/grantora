@@ -155,13 +155,13 @@ Goal: make APISIX reconciliation operationally safe and automatic.
 
 Goal: make operators able to understand and maintain the system safely.
 
-- [ ] Add audit and usage retention jobs or management commands for `AUDIT_RETENTION_DAYS` and `USAGE_RETENTION_DAYS`. Test: records older than retention are removed or archived according to policy.
-- [ ] Add metrics tests that counters increment for auth failure, deny, success, adapter error, secret resolution and APISIX sync. Test: `/metrics` contains expected labels without secrets.
-- [ ] Add structured log tests for denied and failed invocation paths. Test: logs include request id and safe context, not authorization headers or tokens.
-- [ ] Add backup and restore smoke test using compose PostgreSQL dump/restore plus APISIX resync. Test: restored environment can invoke a demo capability.
-- [ ] Add runbook sections for common failures: invalid admin hash, bad Fernet key, missing secret, APISIX Admin API unavailable, migration failure and upstream timeout. Test: runbook commands are validated where practical.
-- [ ] Add optional OpenTelemetry tracing only if it does not leak payloads or secrets. Test: spans contain safe identifiers only.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] Add audit and usage retention jobs or management commands for `AUDIT_RETENTION_DAYS` and `USAGE_RETENTION_DAYS`. Test: records older than retention are removed or archived according to policy.
+- [x] Add metrics tests that counters increment for auth failure, deny, success, adapter error, secret resolution and APISIX sync. Test: `/metrics` contains expected labels without secrets.
+- [x] Add structured log tests for denied and failed invocation paths. Test: logs include request id and safe context, not authorization headers or tokens.
+- [x] Add backup and restore smoke test using compose PostgreSQL dump/restore plus APISIX resync. Test: restored environment can invoke a demo capability.
+- [x] Add runbook sections for common failures: invalid admin hash, bad Fernet key, missing secret, APISIX Admin API unavailable, migration failure and upstream timeout. Test: runbook commands are validated where practical.
+- [x] Add optional OpenTelemetry tracing only if it does not leak payloads or secrets. Test: spans contain safe identifiers only.
+- [x] output git commands to add files and commit changes using a conventional commit 
 
 ## Milestone 16 - Security Hardening
 
@@ -261,6 +261,12 @@ These variables are read by the current `Settings` class or the current compose 
 | `APISIX_PUBLIC_PORT` | Host port mapped to APISIX public port | `9080` | Compose-only. |
 | `APISIX_ADMIN_PORT` | Host port mapped to APISIX Admin API | `9180` | Compose-only; do not publish in production. |
 | `METRICS_ENABLED` | Enables `/metrics` | `true` | Metrics path is currently fixed at `/metrics`. |
+| `AUDIT_RETENTION_DAYS` | Retention window for audit event pruning | `365` | Used by `make retention` and `python -m grantora.cli.retention`. |
+| `USAGE_RETENTION_DAYS` | Retention window for usage event pruning | `365` | Used by `make retention` and `python -m grantora.cli.retention`. |
+| `OTEL_TRACING_ENABLED` | Enables optional OpenTelemetry tracing | `false` | Disabled by default. |
+| `OTEL_SERVICE_NAME` | OpenTelemetry service name | `grantora` | Recorded in spans and exporters. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Optional OTLP/HTTP trace collector endpoint | unset | Falls back to the console exporter when tracing is enabled without a collector. |
+| `OTEL_EXPORTER_OTLP_TIMEOUT_SECONDS` | Trace export timeout | `10` | Positive float seconds. |
 | `REQUEST_ID_HEADER` | Header used for request id propagation | `X-Request-Id` | Included in responses. |
 | `DEFAULT_REQUEST_TIMEOUT_SECONDS` | Reserved/default request timeout setting | `30` | Present in settings; not broadly enforced yet. |
 | `UPSTREAM_TIMEOUT_SECONDS` | Adapter request timeout | `30` | Used by NethVoice and Nextcloud adapters. |
@@ -279,8 +285,6 @@ These appear in `.env.example` or the product docs but are not fully wired in th
 | `APISIX_PUBLIC_URL` | Public APISIX base URL | Align with `GRANTORA_PUBLIC_BASE_URL` or use for APISIX-specific docs. |
 | `METRICS_PATH` | Custom metrics path | Either implement or remove. |
 | `AUDIT_ENABLED` | Audit toggle | Audit is mandatory; remove or define carefully. |
-| `AUDIT_RETENTION_DAYS` | Audit retention period | Milestone 15. |
-| `USAGE_RETENTION_DAYS` | Usage retention period | Milestone 15. |
 | `FEATURE_MCP` | MCP surface toggle | Milestone 13. |
 | `FEATURE_DIRECT_APISIX_PROXY` | Raw proxy toggle | Must remain off by default; any future use needs a security review. |
 | `FEATURE_OIDC` | OIDC/admin identity integration | Milestone 16. |

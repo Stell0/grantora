@@ -17,7 +17,7 @@ Required groups:
 - Security: `SECRET_ENCRYPTION_KEY`, `GRANTORA_AGENT_TOKEN_PEPPER` or `AGENT_TOKEN_PEPPER`, and `GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH` or `ADMIN_BOOTSTRAP_TOKEN_HASH`.
 - Local workflow helpers: `ADMIN_BOOTSTRAP_TOKEN`, `GRANTORA_API_URL`, `GRANTORA_RUNTIME_URL` and optional `DEMO_*` values used by `make demo-seed` and `make smoke`.
 - APISIX: public URL, Admin API URL, Admin API key and sync settings.
-- Observability: metrics, audit retention, usage retention and request id header.
+- Observability: metrics, audit retention, usage retention, request id header and optional tracing.
 - Upstream defaults: timeouts, TLS verification, response size limit and read-only retry attempts.
 
 Agent and admin bootstrap token hashes use the `hmac-sha256:<hex>` format. Generate the admin bootstrap hash with the same token pepper that the service will receive at runtime. The plaintext `ADMIN_BOOTSTRAP_TOKEN` is for local operator commands only; it is not passed to `grantora-api` by the compose file.
@@ -108,6 +108,26 @@ The command writes demo ids and the one-time agent token returned by agent creat
 - `GET /v1/mcp/tools?user=alice` through APISIX
 - `POST /v1/mcp/call` through APISIX
 
+## Retention And Tracing
+
+Prune expired audit and usage data with the retention management command. Use a dry run first when changing retention windows:
+
+```bash
+make retention RETENTION_FLAGS=--dry-run
+make retention
+```
+
+The command reads `AUDIT_RETENTION_DAYS` and `USAGE_RETENTION_DAYS` from the current environment and deletes rows older than the computed cutoff. It never logs or prints secret values.
+
+Optional OpenTelemetry tracing is controlled by these environment variables:
+
+- `OTEL_TRACING_ENABLED`: enable or disable tracing.
+- `OTEL_SERVICE_NAME`: service name recorded in spans.
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: optional OTLP/HTTP collector endpoint.
+- `OTEL_EXPORTER_OTLP_TIMEOUT_SECONDS`: exporter timeout for remote collectors.
+
+When tracing is enabled, Grantora records only safe identifiers such as request id, path, status code, workspace id, agent id, user id and capability id when they are known. It does not attach authorization headers, tokens, cookies, payload bodies or upstream secret material to spans.
+
 ## MCP And Agent Tooling
 
 Grantora's product MCP surface is authenticated HTTP JSON under the runtime API. It is intended for Hermes or generic MCP-aware clients that need a stable tool list and a tool-call bridge without receiving upstream secrets or raw provider URLs.
@@ -166,6 +186,15 @@ make test-e2e
 ```
 
 The e2e suite seeds a unique demo workspace through Admin APIs, syncs APISIX, verifies discovery and invocation through `http://localhost:9080`, and checks that denied, missing-secret and upstream-error attempts have audit and usage records.
+
+Run the destructive backup and restore smoke flow only against disposable compose state:
+
+```bash
+export GRANTORA_RUN_BACKUP_RESTORE_SMOKE=1
+make backup-restore-smoke
+```
+
+That workflow seeds the demo, writes a PostgreSQL custom dump, tears down compose volumes, restores PostgreSQL from the dump, waits for Grantora readiness, resyncs APISIX and verifies a demo capability invocation still succeeds.
 
 Provider adapter integration tests use sanitized mock upstream payloads and `httpx` transports, so they do not require network access to NethVoice or Nextcloud.
 
@@ -248,6 +277,8 @@ Logs must be structured JSON in production. Required fields include timestamp, l
 
 Never log secrets, tokens, authorization headers, cookies or raw sensitive payloads.
 
+Denied and failed runtime invocation paths also emit structured runtime logs with safe decision, outcome and error code fields so operators can correlate audit records with request logs.
+
 ## Metrics
 
 Minimum metrics:
@@ -293,6 +324,12 @@ curl -X POST http://localhost:8080/v1/admin/apisix/sync \
   -H "Authorization: Bearer $ADMIN_BOOTSTRAP_TOKEN"
 ```
 
+Validated shortcut for local disposable environments:
+
+```bash
+make backup-restore-smoke
+```
+
 Restore order:
 
 1. Restore environment secrets.
@@ -303,6 +340,70 @@ Restore order:
 6. Verify `/readyz`, `/metrics` and a demo capability invocation.
 
 Acceptance test: restoring into a clean local environment must recreate workspaces, application instances, agents, users, capabilities, bindings, encrypted secrets, audit events, usage events and APISIX desired route state from PostgreSQL. A fresh APISIX reconciliation must recreate generated APISIX runtime routes.
+
+## Troubleshooting Runbook
+
+Invalid admin hash:
+
+```bash
+python - <<'PY'
+import os
+import hashlib
+import hmac
+
+token = os.environ['ADMIN_BOOTSTRAP_TOKEN']
+pepper = os.environ['GRANTORA_AGENT_TOKEN_PEPPER']
+digest = hmac.new(pepper.encode(), token.encode(), hashlib.sha256).hexdigest()
+print(f'hmac-sha256:{digest}')
+PY
+```
+
+Use the output to replace `GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH` when requests return `admin_auth_invalid` or `admin_auth_unavailable`.
+
+Bad Fernet key:
+
+```bash
+python - <<'PY'
+from cryptography.fernet import Fernet
+print(Fernet.generate_key().decode())
+PY
+```
+
+If requests fail with `secret_unavailable`, verify the restored `SECRET_ENCRYPTION_KEY` matches the key that encrypted the stored secrets. Rotating the key without re-encrypting data will make old ciphertext unreadable.
+
+Missing secret:
+
+```bash
+curl -sS 'http://localhost:8080/v1/admin/secrets?workspace_id=<workspace-id>&owner_type=user&owner_id=<user-id>' \
+  -H "Authorization: Bearer $ADMIN_BOOTSTRAP_TOKEN"
+```
+
+If runtime returns `secret_not_found`, confirm there is one active secret for the expected owner and application instance, and rerun `make demo-seed` for the demo workflow if the local demo secret was removed.
+
+APISIX Admin API unavailable:
+
+```bash
+curl -sS 'http://localhost:8080/v1/admin/apisix/status?include_drift=true' \
+  -H "Authorization: Bearer $ADMIN_BOOTSTRAP_TOKEN"
+```
+
+If sync reports `apisix_admin_unavailable`, verify `APISIX_ADMIN_URL`, `APISIX_ADMIN_KEY`, the local `127.0.0.1:${APISIX_ADMIN_PORT:-9180}` binding and container reachability before retrying `POST /v1/admin/apisix/sync`.
+
+Migration failure:
+
+```bash
+docker compose exec grantora-api python -m alembic upgrade head
+```
+
+If startup fails before the API is ready, run the migration manually to surface the schema error, then inspect container logs and the latest migration for incompatible changes.
+
+Upstream timeout:
+
+```bash
+curl -sS http://localhost:8080/metrics | grep 'grantora_upstream_\|grantora_secret_resolution_'
+```
+
+If runtime returns `upstream_timeout`, confirm the upstream base URL, `UPSTREAM_TIMEOUT_SECONDS`, `UPSTREAM_CONNECT_TIMEOUT_SECONDS`, TLS settings and the user or workspace secret are correct before retrying.
 
 ## Upgrade Rules
 

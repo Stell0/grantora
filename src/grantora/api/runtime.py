@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from time import perf_counter
 from typing import Any
@@ -64,6 +65,7 @@ from grantora.usage import record_usage_event
 
 router = APIRouter(prefix="/v1", tags=["runtime"])
 CAPABILITY_DENIED_MESSAGE = "Capability is not allowed for this agent and user"
+LOGGER = logging.getLogger("grantora.runtime")
 
 
 @router.get("/me", response_model=MeResponse)
@@ -715,6 +717,19 @@ def _record_invocation_attempt(
         latency_ms=latency_ms,
     )
     session.commit()
+    _log_invocation_attempt(
+        request,
+        request_id=request_id,
+        agent=agent,
+        user=user,
+        capability=capability,
+        capability_id=capability_id,
+        decision=decision,
+        outcome=outcome,
+        usage_status=usage_status,
+        error_code=error_code,
+        latency_ms=latency_ms,
+    )
 
 
 def _set_request_observability_context(
@@ -729,3 +744,41 @@ def _set_request_observability_context(
     request.state.user_id = str(user.id) if user is not None else None
     request.state.capability_id = capability_id
     request.state.provider_type = capability.provider_type if capability is not None else None
+
+
+def _log_invocation_attempt(
+    request: Request,
+    *,
+    request_id: str,
+    agent: Agent,
+    user: User | None,
+    capability: Capability | None,
+    capability_id: str,
+    decision: str,
+    outcome: str,
+    usage_status: str,
+    error_code: str | None,
+    latency_ms: int,
+) -> None:
+    extra = {
+        "request_id": request_id,
+        "trace_id": getattr(request.state, "trace_id", None),
+        "span_id": getattr(request.state, "span_id", None),
+        "workspace_id": str(agent.workspace_id),
+        "agent_id": str(agent.id),
+        "user_id": str(user.id) if user is not None else None,
+        "capability_id": capability_id,
+        "provider_type": capability.provider_type if capability is not None else None,
+        "decision": decision,
+        "outcome": outcome,
+        "usage_status": usage_status,
+        "error_code": error_code,
+        "duration_ms": latency_ms,
+    }
+    if outcome == "success":
+        LOGGER.info("runtime invocation succeeded", extra=extra)
+        return
+    if decision == "deny":
+        LOGGER.warning("runtime invocation denied", extra=extra)
+        return
+    LOGGER.error("runtime invocation failed", extra=extra)
