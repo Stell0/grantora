@@ -409,6 +409,34 @@ def test_missing_secret_fails_closed_and_is_recorded(api_context: APIContext) ->
     assert usage_event.status == "denied"
 
 
+def test_revoked_secret_is_not_selected_for_invocation(api_context: APIContext) -> None:
+    records = add_runtime_records(api_context)
+    add_secret(
+        api_context,
+        records,
+        owner_type="user",
+        owner_id=records.user_id,
+        value="revoked-token",
+        status="revoked",
+    )
+    add_secret(
+        api_context,
+        records,
+        owner_type="user",
+        owner_id=records.user_id,
+        value="active-token",
+    )
+
+    response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.search",
+        headers={**authorization_headers("grt_agent_runtime"), "X-Request-Id": "req_rotated"},
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+
+    assert response.status_code == 200
+    assert api_context.adapter.calls[0]["secret_value"] == "active-token"
+
+
 def test_adapter_error_is_returned_safely_and_records_error_usage(
     api_context: APIContext,
 ) -> None:
@@ -707,6 +735,7 @@ def add_secret(
     owner_type: str,
     owner_id: UUID,
     value: str,
+    status: str = "active",
 ) -> None:
     with api_context.database.session_factory() as session:
         workspace = session.get(Workspace, records.workspace_id)
@@ -722,6 +751,7 @@ def add_secret(
                 owner_id=owner_id,
                 secret_type="bearer_token",
                 encrypted_value=cipher.encrypt(value),
+                status=status,
             )
         )
         session.commit()

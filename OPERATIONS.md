@@ -121,6 +121,26 @@ Back up:
 
 Do not rely on APISIX etcd as the source of truth. APISIX state is generated from PostgreSQL and should be reconstructable by reconciliation.
 
+Local backup example:
+
+```bash
+docker compose exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom > grantora.dump
+cp .env grantora.env.backup
+```
+
+Local restore example into a clean compose environment:
+
+```bash
+docker compose down -v
+cp grantora.env.backup .env
+docker compose up -d postgres
+docker compose exec -T postgres pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists < grantora.dump
+docker compose up -d grantora-api apisix-etcd apisix
+docker compose exec grantora-api alembic upgrade head
+curl -X POST http://localhost:8080/v1/admin/apisix/sync \
+  -H "Authorization: Bearer $ADMIN_BOOTSTRAP_TOKEN"
+```
+
 Restore order:
 
 1. Restore environment secrets.
@@ -129,6 +149,8 @@ Restore order:
 4. Start Grantora API.
 5. Reconcile APISIX routes.
 6. Verify `/readyz`, `/metrics` and a demo capability invocation.
+
+Acceptance test: restoring into a clean local environment must recreate workspaces, application instances, agents, users, capabilities, bindings, encrypted secrets, audit events, usage events and APISIX desired route state from PostgreSQL. A fresh APISIX reconciliation must recreate generated APISIX runtime routes.
 
 ## Upgrade Rules
 

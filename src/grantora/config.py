@@ -75,6 +75,27 @@ class Settings(BaseSettings):
     )
     metrics_enabled: bool = Field(default=True, validation_alias="METRICS_ENABLED")
     request_id_header: str = Field(default="X-Request-Id", validation_alias="REQUEST_ID_HEADER")
+    default_request_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        validation_alias="DEFAULT_REQUEST_TIMEOUT_SECONDS",
+    )
+    upstream_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        validation_alias="UPSTREAM_TIMEOUT_SECONDS",
+    )
+    upstream_connect_timeout_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        validation_alias="UPSTREAM_CONNECT_TIMEOUT_SECONDS",
+    )
+    upstream_tls_verify: bool = Field(default=True, validation_alias="UPSTREAM_TLS_VERIFY")
+    upstream_max_response_bytes: int = Field(
+        default=10_485_760,
+        gt=0,
+        validation_alias="UPSTREAM_MAX_RESPONSE_BYTES",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

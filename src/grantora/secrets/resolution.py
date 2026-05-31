@@ -7,6 +7,7 @@ from grantora.adapters import SecretMaterial
 from grantora.config import Settings
 from grantora.db.models import Capability, User
 from grantora.db.queries import get_active_secret_for_owner
+from grantora.metrics import record_secret_resolution
 from grantora.secrets.encryption import SecretCipher
 
 
@@ -41,12 +42,22 @@ def resolve_secret_material(
             capability.workspace_id,
         )
     else:
+        record_secret_resolution(
+            workspace=str(capability.workspace_id),
+            provider=capability.provider_type,
+            result="denied",
+        )
         raise SecretResolutionError(
             "capability_denied",
             "Capability is not allowed for runtime invocation",
         )
 
     if secret is None:
+        record_secret_resolution(
+            workspace=str(capability.workspace_id),
+            provider=capability.provider_type,
+            result="not_found",
+        )
         raise SecretResolutionError(
             "secret_not_found",
             "Required upstream secret was not found",
@@ -55,9 +66,19 @@ def resolve_secret_material(
     try:
         value = SecretCipher(settings.secret_encryption_key).decrypt(secret.encrypted_value)
     except (InvalidToken, ValueError) as exc:
+        record_secret_resolution(
+            workspace=str(capability.workspace_id),
+            provider=capability.provider_type,
+            result="unavailable",
+        )
         raise SecretResolutionError(
             "secret_unavailable",
             "Required upstream secret could not be used",
         ) from exc
 
+    record_secret_resolution(
+        workspace=str(capability.workspace_id),
+        provider=capability.provider_type,
+        result="success",
+    )
     return SecretMaterial(secret_type=secret.secret_type, value=value)

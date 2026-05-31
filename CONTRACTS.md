@@ -121,6 +121,26 @@ Rules:
 
 Returns usage summary for the authenticated agent. It must not expose other agents unless authorized by a future admin contract.
 
+## Observability API
+
+### GET /metrics
+
+Returns Prometheus-compatible metrics when `METRICS_ENABLED=true`.
+
+Rules:
+
+- The endpoint is not part of runtime OpenAPI or filtered capability OpenAPI.
+- Metrics must not expose secrets, bearer tokens, authorization headers, cookies, raw request payloads or raw upstream response bodies.
+- Required metric families:
+  - `grantora_requests_total{workspace,agent,user,capability,status}`
+  - `grantora_request_duration_seconds{workspace,capability,provider}`
+  - `grantora_authorization_denied_total{workspace,reason}`
+  - `grantora_upstream_requests_total{workspace,provider,status}`
+  - `grantora_upstream_errors_total{workspace,provider,error_code}`
+  - `grantora_secret_resolution_total{workspace,provider,result}`
+  - `grantora_apisix_sync_total{status}`
+  - `grantora_apisix_sync_duration_seconds`
+
 ## Admin API
 
 Admin endpoints require admin authentication. The MVP uses an admin bootstrap token hash from environment configuration.
@@ -362,6 +382,27 @@ status: active | revoked
 ```
 
 Secrets are encrypted before storage, decrypted only in memory during invocation and never returned through APIs.
+
+Secret resolution selects only active secrets. Rotating a secret is done by inserting the replacement as `active` and marking the old secret `revoked`; revoked secrets are not selected for invocation.
+
+## Adapter Hardening Contract
+
+Adapters must enforce configured upstream timeouts and response size limits.
+
+Configuration:
+
+```text
+UPSTREAM_TIMEOUT_SECONDS
+UPSTREAM_CONNECT_TIMEOUT_SECONDS
+UPSTREAM_MAX_RESPONSE_BYTES
+UPSTREAM_TLS_VERIFY
+```
+
+Rules:
+
+- Upstream timeouts return the safe error code `upstream_timeout`.
+- Upstream responses larger than `UPSTREAM_MAX_RESPONSE_BYTES` return the safe error code `upstream_payload_too_large`.
+- Safe adapter errors must not include upstream response bodies, internal URLs, stack traces or credential material.
 
 ## Audit Event Contract
 

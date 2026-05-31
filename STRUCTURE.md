@@ -52,6 +52,7 @@ src/grantora/
   main.py                 FastAPI application factory and startup wiring
   config.py               environment-only static configuration
   logging.py              structured JSON logging setup
+  metrics.py              Prometheus metrics registry and recording helpers
   api/                    FastAPI route modules
   auth/                   agent and admin authentication
   rbac/                   runtime RBAC and binding checks
@@ -63,7 +64,6 @@ src/grantora/
   apisix/                 APISIX Admin API client and reconciler
   db/                     SQLAlchemy models, session and persistence helpers
   schemas/                Pydantic request and response models
-  telemetry/              metrics, tracing and request IDs
   openapi/                filtered OpenAPI and future MCP tool descriptions
 ```
 
@@ -72,7 +72,7 @@ src/grantora/
 - `src/grantora/api/runtime.py`: `/v1/me`, `/v1/capabilities`, `/v1/invoke/{capability_id}`, `/v1/usage/me`.
 - `src/grantora/api/admin.py`: `/v1/admin/*` management endpoints.
 - `src/grantora/api/health.py`: `/healthz` and `/readyz`.
-- `src/grantora/api/metrics.py`: `/metrics` when enabled.
+- `src/grantora/main.py`: `/metrics` when enabled.
 
 ## Database Ownership
 

@@ -27,6 +27,10 @@ Required areas:
 - Adapter result normalization
 - Adapter error mapping
 - Standard error response formatting
+- Metrics endpoint exposure and counter increments
+- Structured JSON request logs without authorization headers or secrets
+- Revoked secret exclusion during secret resolution
+- Upstream timeout and maximum response size enforcement
 
 ## Integration Tests
 

@@ -87,6 +87,7 @@ Required mappings:
 - Upstream 429 -> `upstream_rate_limited`
 - Upstream 5xx -> `upstream_error`
 - Invalid upstream response -> `upstream_invalid_response`
+- Oversized upstream response -> `upstream_payload_too_large`
 
 ## Secret Lookup Rules
 
@@ -104,6 +105,7 @@ Adapters may reject incompatible secret types but must not fall back to hard-cod
 ## Timeout And Retry Behavior
 
 - Use the configured upstream connect timeout and request timeout.
+- Enforce the configured maximum upstream response size before parsing provider payloads.
 - Do not retry non-idempotent capabilities unless the capability contract explicitly allows it.
 - Read-only capabilities may retry safe network failures once when the caller can tolerate duplicate reads.
 - Always return a safe timeout or upstream error when retries are exhausted.

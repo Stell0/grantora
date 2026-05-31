@@ -37,4 +37,4 @@ Useful local URLs:
 
 ## Development Status
 
-Status: Milestone 2 agent authentication implemented. The next implementation step is Milestone 3 in [PLAN.md](PLAN.md): capability invocation.
+Status: Milestone 7 observability and hardening implemented. See [PLAN.md](PLAN.md) for the current roadmap status.

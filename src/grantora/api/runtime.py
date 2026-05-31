@@ -32,6 +32,7 @@ from grantora.db.queries import (
     list_active_capabilities_for_agent_user,
     role_grants_permission,
 )
+from grantora.metrics import record_authorization_denied, record_upstream_result
 from grantora.openapi import build_capability_openapi, build_runtime_openapi
 from grantora.schemas import (
     AgentSummary,
@@ -243,6 +244,12 @@ async def invoke_capability(
     try:
         result = await adapter.invoke(capability, payload.input, context, secret)
     except Exception as exc:
+        record_upstream_result(
+            workspace=str(agent.workspace_id),
+            provider=capability.provider_type,
+            status_code=None,
+            error_code="adapter_error",
+        )
         _record_invocation_attempt(
             session,
             request,
@@ -262,6 +269,13 @@ async def invoke_capability(
             "adapter_error",
             "Capability adapter returned an error",
         ) from exc
+
+    record_upstream_result(
+        workspace=str(agent.workspace_id),
+        provider=capability.provider_type,
+        status_code=result.upstream_status,
+        error_code=result.error_code if result.status != "ok" else None,
+    )
 
     if result.status != "ok":
         _record_and_raise_invocation_error(
@@ -434,6 +448,12 @@ def _record_invocation_attempt(
 ) -> None:
     latency_ms = max(int((perf_counter() - started_at) * 1000), 0)
     application_instance_id = capability.application_instance_id if capability is not None else None
+    _set_request_observability_context(request, agent, user, capability, capability_id)
+    if decision == "deny":
+        record_authorization_denied(
+            workspace=str(agent.workspace_id),
+            reason=error_code or "denied",
+        )
     record_audit_event(
         session,
         request_id=request_id,
@@ -460,3 +480,17 @@ def _record_invocation_attempt(
         latency_ms=latency_ms,
     )
     session.commit()
+
+
+def _set_request_observability_context(
+    request: Request,
+    agent: Agent,
+    user: User | None,
+    capability: Capability | None,
+    capability_id: str,
+) -> None:
+    request.state.workspace_id = str(agent.workspace_id)
+    request.state.agent_id = str(agent.id)
+    request.state.user_id = str(user.id) if user is not None else None
+    request.state.capability_id = capability_id
+    request.state.provider_type = capability.provider_type if capability is not None else None

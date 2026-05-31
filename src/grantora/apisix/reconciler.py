@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from grantora.apisix.client import ApisixAdminAPIError
 from grantora.config import Settings
 from grantora.db.models import ACTIVE_STATUS, ApisixRoute, ApisixSyncStatus, utc_now
+from grantora.metrics import now, record_apisix_sync
 
 APISIX_SYNC_STATUS_ID = "default"
 DEFAULT_RUNTIME_ROUTE_ID = "gateway-runtime"
@@ -36,6 +37,7 @@ async def reconcile_apisix_routes(
     client: ApisixRouteClient,
 ) -> ApisixSyncResult:
     started_at = utc_now()
+    metrics_started_at = now()
     ensure_default_runtime_route(session, settings)
     session.commit()
 
@@ -75,6 +77,7 @@ async def reconcile_apisix_routes(
 
     record_apisix_sync_status(session, result, started_at=started_at)
     session.commit()
+    record_apisix_sync(status=result.status, duration_seconds=now() - metrics_started_at)
     return result
 
 

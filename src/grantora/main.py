@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
@@ -13,6 +14,9 @@ from grantora.apisix import ApisixAdminClient
 from grantora.config import Settings, get_settings
 from grantora.db import Database
 from grantora.logging import configure_logging
+from grantora.metrics import now, record_http_request, render_metrics
+
+LOGGER = logging.getLogger("grantora.http")
 
 
 def create_apisix_admin_client(settings: Settings) -> ApisixAdminClient:
@@ -40,22 +44,79 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
     )
 
     @app.middleware("http")
-    async def attach_request_id(
+    async def observe_request(
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
+        started_at = now()
         request_id = request.headers.get(resolved_settings.request_id_header) or create_request_id()
         request.state.request_id = request_id
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            record_http_request(
+                started_at=started_at,
+                status_code=500,
+                workspace=getattr(request.state, "workspace_id", None),
+                agent=getattr(request.state, "agent_id", None),
+                user=getattr(request.state, "user_id", None),
+                capability=getattr(request.state, "capability_id", None),
+                provider=getattr(request.state, "provider_type", None),
+            )
+            LOGGER.exception(
+                "request failed",
+                extra=_request_log_context(request, request_id, 500, started_at),
+            )
+            raise
+
         response.headers[resolved_settings.request_id_header] = request_id
+        record_http_request(
+            started_at=started_at,
+            status_code=response.status_code,
+            workspace=getattr(request.state, "workspace_id", None),
+            agent=getattr(request.state, "agent_id", None),
+            user=getattr(request.state, "user_id", None),
+            capability=getattr(request.state, "capability_id", None),
+            provider=getattr(request.state, "provider_type", None),
+        )
+        LOGGER.info(
+            "request completed",
+            extra=_request_log_context(request, request_id, response.status_code, started_at),
+        )
         return response
+
+    if resolved_settings.metrics_enabled:
+
+        @app.get("/metrics", include_in_schema=False)
+        def get_metrics() -> Response:
+            content, media_type = render_metrics()
+            return Response(content=content, media_type=media_type)
 
     app.state.settings = resolved_settings
     app.state.database = resolved_database
-    app.state.adapters = create_default_adapter_registry()
+    app.state.adapters = create_default_adapter_registry(resolved_settings)
     app.state.apisix_client_factory = create_apisix_admin_client
     app.add_exception_handler(GrantoraAPIError, grantora_api_error_handler)
     app.include_router(health_router)
     app.include_router(runtime_router)
     app.include_router(admin_router)
     return app
+
+
+def _request_log_context(
+    request: Request,
+    request_id: str,
+    status_code: int,
+    started_at: float,
+) -> dict[str, object]:
+    return {
+        "request_id": request_id,
+        "workspace_id": getattr(request.state, "workspace_id", None),
+        "agent_id": getattr(request.state, "agent_id", None),
+        "user_id": getattr(request.state, "user_id", None),
+        "capability_id": getattr(request.state, "capability_id", None),
+        "method": request.method,
+        "path": request.url.path,
+        "status_code": status_code,
+        "duration_ms": max(int((now() - started_at) * 1000), 0),
+    }

@@ -218,6 +218,39 @@ async def test_nethvoice_phonebook_adapter_maps_timeout() -> None:
 
 
 @pytest.mark.asyncio
+async def test_nethvoice_phonebook_adapter_rejects_oversized_upstream_payload() -> None:
+    adapter = NethVoicePhonebookAdapter(
+        max_response_bytes=32,
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "contacts": [
+                        {
+                            "displayName": "Mario Rossi",
+                            "number": "+3900112233",
+                            "company": "Acme",
+                        }
+                    ]
+                },
+            )
+        ),
+    )
+
+    result = await adapter.invoke(
+        capability_stub(),
+        {"query": "Mario"},
+        invocation_context(),
+        SecretMaterial(secret_type="bearer_token", value="nethvoice-token"),
+    )
+
+    assert result.status == "error"
+    assert result.error_code == "upstream_payload_too_large"
+    assert result.safe_message == "The upstream application response was too large"
+    assert result.upstream_status == 200
+
+
+@pytest.mark.asyncio
 async def test_nethvoice_phonebook_adapter_maps_invalid_upstream_payload() -> None:
     adapter = NethVoicePhonebookAdapter(
         transport=httpx.MockTransport(

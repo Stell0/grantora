@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from grantora.adapters.base import Adapter
+from grantora.config import Settings
 
 
 class AdapterRegistry:
@@ -18,8 +19,20 @@ class AdapterRegistry:
         return self._adapters.get(adapter_id)
 
 
-def create_default_adapter_registry() -> AdapterRegistry:
+def create_default_adapter_registry(settings: Settings | None = None) -> AdapterRegistry:
     from grantora.adapters.mock import MockAdapter
     from grantora.adapters.nethvoice import NethVoicePhonebookAdapter
 
-    return AdapterRegistry([MockAdapter(), NethVoicePhonebookAdapter()])
+    if settings is None:
+        return AdapterRegistry([MockAdapter(), NethVoicePhonebookAdapter()])
+    return AdapterRegistry(
+        [
+            MockAdapter(),
+            NethVoicePhonebookAdapter(
+                timeout_seconds=settings.upstream_timeout_seconds,
+                connect_timeout_seconds=settings.upstream_connect_timeout_seconds,
+                max_response_bytes=settings.upstream_max_response_bytes,
+                verify=settings.upstream_tls_verify,
+            ),
+        ]
+    )

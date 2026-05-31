@@ -72,9 +72,9 @@ This roadmap is the working build order for Grantora. Keep checkboxes current an
 
 ## Milestone 7 - Observability And Hardening
 
-- [ ] Add Prometheus metrics. Test: `/metrics` exposes request, authorization, upstream, secret and APISIX sync counters.
-- [ ] Add structured JSON logs. Test: logs include request id and omit secrets and authorization headers.
-- [ ] Add secret rotation behavior. Test: revoked secret is not selected for invocation.
-- [ ] Add timeout and payload size enforcement. Test: slow and oversized upstream responses fail safely.
-- [ ] Document backup and restore procedure. Test: restore into a clean local environment recreates Grantora dynamic state.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] Add Prometheus metrics. Test: `/metrics` exposes request, authorization, upstream, secret and APISIX sync counters.
+- [x] Add structured JSON logs. Test: logs include request id and omit secrets and authorization headers.
+- [x] Add secret rotation behavior. Test: revoked secret is not selected for invocation.
+- [x] Add timeout and payload size enforcement. Test: slow and oversized upstream responses fail safely.
+- [x] Document backup and restore procedure. Test: restore into a clean local environment recreates Grantora dynamic state.
+- [x] output git commands to add files and commit changes using a conventional commit

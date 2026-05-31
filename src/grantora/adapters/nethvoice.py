@@ -10,6 +10,7 @@ from grantora.db.models import ApplicationInstance, Capability
 
 DEFAULT_PHONEBOOK_SEARCH_PATH = "/api/phonebook/search"
 DEFAULT_PHONEBOOK_LIMIT = 50
+DEFAULT_MAX_RESPONSE_BYTES = 10_485_760
 NETHVOICE_SOURCE = "nethvoice"
 
 
@@ -21,10 +22,16 @@ class NethVoicePhonebookAdapter:
         self,
         *,
         timeout_seconds: float = 5.0,
+        connect_timeout_seconds: float | None = None,
+        max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
+        verify: bool = True,
         transport: httpx.AsyncBaseTransport | None = None,
         phonebook_search_path: str = DEFAULT_PHONEBOOK_SEARCH_PATH,
     ) -> None:
         self._timeout_seconds = timeout_seconds
+        self._connect_timeout_seconds = connect_timeout_seconds
+        self._max_response_bytes = max_response_bytes
+        self._verify = verify
         self._transport = transport
         self._phonebook_search_path = phonebook_search_path
 
@@ -59,7 +66,8 @@ class NethVoicePhonebookAdapter:
         try:
             async with httpx.AsyncClient(
                 base_url=context.application.base_url,
-                timeout=self._timeout_seconds,
+                timeout=self._timeout_config(),
+                verify=self._verify,
                 transport=self._transport,
             ) as client:
                 response = await client.get(
@@ -83,6 +91,12 @@ class NethVoicePhonebookAdapter:
         error_result = _error_result_from_response(response)
         if error_result is not None:
             return error_result
+        if _response_too_large(response, self._max_response_bytes):
+            return AdapterResult.error(
+                "upstream_payload_too_large",
+                "The upstream application response was too large",
+                upstream_status=response.status_code,
+            )
 
         try:
             payload = response.json()
@@ -106,6 +120,11 @@ class NethVoicePhonebookAdapter:
                 safe_message="The upstream application endpoint was not configured",
             )
         return HealthResult(status="ok")
+
+    def _timeout_config(self) -> httpx.Timeout:
+        if self._connect_timeout_seconds is None:
+            return httpx.Timeout(self._timeout_seconds)
+        return httpx.Timeout(self._timeout_seconds, connect=self._connect_timeout_seconds)
 
 
 def _auth_headers(secret: SecretMaterial) -> dict[str, str] | None:
@@ -180,6 +199,10 @@ def _invalid_response(upstream_status: int | None) -> AdapterResult:
         "The upstream application returned an invalid response",
         upstream_status=upstream_status,
     )
+
+
+def _response_too_large(response: httpx.Response, max_response_bytes: int) -> bool:
+    return len(response.content) > max_response_bytes
 
 
 def _normalized_contacts(payload: Any, limit: int) -> list[dict[str, str]] | None:
