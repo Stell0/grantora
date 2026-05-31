@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from time import perf_counter
 from typing import Any
@@ -36,13 +37,22 @@ from grantora.db.queries import (
     role_grants_permission,
 )
 from grantora.metrics import record_authorization_denied, record_upstream_result
-from grantora.openapi import build_capability_openapi, build_runtime_openapi
+from grantora.openapi import (
+    build_capability_openapi,
+    build_mcp_tool_list,
+    build_runtime_openapi,
+    capability_tool_name,
+)
 from grantora.schemas import (
     AgentSummary,
     CapabilityInvokeRequest,
     CapabilityInvokeResponse,
     CapabilityListResponse,
     CapabilitySummary,
+    MCPTextContent,
+    MCPToolCallRequest,
+    MCPToolCallResponse,
+    MCPToolListResponse,
     MeResponse,
     RuntimeUsageAggregateSummary,
     RuntimeUsageEventSummary,
@@ -107,6 +117,74 @@ def get_capability_openapi(
         _list_visible_capabilities(session, agent, selected_user),
         user=user,
     )
+
+
+@router.get("/mcp/tools", response_model=MCPToolListResponse)
+def list_mcp_tools(
+    agent: AuthenticatedAgent,
+    session: DatabaseSession,
+    user: str = Query(min_length=1),
+) -> dict[str, Any]:
+    selected_user = get_active_user_by_external_id(session, agent.workspace_id, user)
+    if selected_user is None:
+        return build_mcp_tool_list([])
+
+    return build_mcp_tool_list(_list_visible_capabilities(session, agent, selected_user))
+
+
+@router.post("/mcp/call", response_model=MCPToolCallResponse)
+async def call_mcp_tool(
+    payload: MCPToolCallRequest,
+    request: Request,
+    agent: AuthenticatedAgent,
+    session: DatabaseSession,
+) -> MCPToolCallResponse:
+    started_at = perf_counter()
+    request_id = get_request_id(request)
+    selected_user = get_active_user_by_external_id(session, agent.workspace_id, payload.user)
+    if selected_user is None:
+        _record_and_raise_invocation_error(
+            session,
+            request,
+            started_at,
+            request_id=request_id,
+            agent=agent,
+            user=None,
+            capability=None,
+            capability_id=payload.name,
+            decision="deny",
+            usage_status="denied",
+            http_status=status.HTTP_403_FORBIDDEN,
+            error_code="capability_denied",
+            message=CAPABILITY_DENIED_MESSAGE,
+        )
+
+    capability = _get_mcp_capability_by_tool_name(session, agent, selected_user, payload.name)
+    if capability is None:
+        _record_and_raise_invocation_error(
+            session,
+            request,
+            started_at,
+            request_id=request_id,
+            agent=agent,
+            user=selected_user,
+            capability=None,
+            capability_id=payload.name,
+            decision="deny",
+            usage_status="denied",
+            http_status=status.HTTP_403_FORBIDDEN,
+            error_code="capability_denied",
+            message=CAPABILITY_DENIED_MESSAGE,
+        )
+
+    invocation = await _invoke_capability_by_id(
+        capability.id,
+        CapabilityInvokeRequest(user=payload.user, input=payload.arguments),
+        request,
+        agent,
+        session,
+    )
+    return _mcp_response_from_invocation(invocation)
 
 
 @router.get("/usage/me", response_model=UsageMeResponse)
@@ -186,6 +264,16 @@ async def invoke_capability(
     request: Request,
     agent: AuthenticatedAgent,
     session: DatabaseSession,
+) -> CapabilityInvokeResponse:
+    return await _invoke_capability_by_id(capability_id, payload, request, agent, session)
+
+
+async def _invoke_capability_by_id(
+    capability_id: str,
+    payload: CapabilityInvokeRequest,
+    request: Request,
+    agent: Agent,
+    session: Session,
 ) -> CapabilityInvokeResponse:
     started_at = perf_counter()
     request_id = get_request_id(request)
@@ -428,6 +516,38 @@ def _get_adapter_registry(request: Request) -> AdapterRegistry:
     if isinstance(adapter_registry, AdapterRegistry):
         return adapter_registry
     return AdapterRegistry()
+
+
+def _get_mcp_capability_by_tool_name(
+    session: Session,
+    agent: Agent,
+    user: User,
+    tool_name: str,
+) -> Capability | None:
+    for capability in sorted(
+        _list_visible_capabilities(session, agent, user),
+        key=lambda visible_capability: visible_capability.id,
+    ):
+        if capability_tool_name(capability.id) == tool_name:
+            return capability
+    return None
+
+
+def _mcp_response_from_invocation(invocation: CapabilityInvokeResponse) -> MCPToolCallResponse:
+    return MCPToolCallResponse(
+        content=[
+            MCPTextContent(
+                type="text",
+                text=json.dumps(invocation.data, separators=(",", ":"), sort_keys=True),
+            )
+        ],
+        structured_content=invocation.data,
+        is_error=False,
+        meta={
+            "grantora/request_id": invocation.request_id,
+            "grantora/capability_id": invocation.capability,
+        },
+    )
 
 
 def _list_visible_capabilities(session: Session, agent: Agent, user: User) -> list[Capability]:

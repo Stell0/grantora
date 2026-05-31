@@ -40,6 +40,39 @@ class CapabilityInvokeResponse(BaseModel):
     data: dict[str, Any]
 
 
+class MCPToolDescriptor(BaseModel):
+    name: str
+    description: str
+    input_schema: dict[str, Any] = Field(alias="inputSchema")
+    meta: dict[str, Any] = Field(alias="_meta")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class MCPToolListResponse(BaseModel):
+    tools: list[MCPToolDescriptor]
+
+
+class MCPToolCallRequest(BaseModel):
+    user: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=128)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class MCPTextContent(BaseModel):
+    type: Literal["text"]
+    text: str
+
+
+class MCPToolCallResponse(BaseModel):
+    content: list[MCPTextContent]
+    structured_content: dict[str, Any] = Field(alias="structuredContent")
+    is_error: bool = Field(alias="isError")
+    meta: dict[str, Any] = Field(alias="_meta")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class RuntimeUsageEventSummary(BaseModel):
     id: UUID
     timestamp: datetime

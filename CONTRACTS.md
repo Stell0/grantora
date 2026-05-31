@@ -71,16 +71,66 @@ Rules:
 - Include capability-specific invocation paths that map back to capability ids.
 - Do not include admin APIs.
 
-### MCP-compatible tool list
+### GET /v1/mcp/tools
 
-The internal tool-list generator produces MCP-compatible tool descriptors from the same filtered capability set used by `GET /v1/capabilities/openapi.json`.
+Returns an MCP-compatible tool list for the authenticated agent and selected user. Grantora's product MCP surface is authenticated HTTP JSON under the runtime API; it does not expose a streaming MCP session or stdio server in this milestone.
+
+Query parameters:
+
+- `user`: required user external id.
 
 Rules:
 
+- Build the list from the same filtered capability set used by `GET /v1/capabilities/openapi.json`.
 - Tool names are stable and derived from capability ids.
 - Each tool descriptor includes the capability input schema.
 - Each tool descriptor includes metadata mapping back to the Grantora capability id and invocation path.
 - Do not include upstream URLs, secrets or adapter private configuration.
+
+### POST /v1/mcp/call
+
+Maps an MCP-style tool call to the same capability executor used by `POST /v1/invoke/{capability_id}`.
+
+Request body:
+
+```json
+{
+  "user": "alice",
+  "name": "nethvoice_phonebook_search",
+  "arguments": {
+    "query": "Mario",
+    "limit": 10
+  }
+}
+```
+
+Success response:
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"contacts\":[]}"
+    }
+  ],
+  "structuredContent": {
+    "contacts": []
+  },
+  "isError": false,
+  "_meta": {
+    "grantora/request_id": "req_01j...",
+    "grantora/capability_id": "nethvoice.phonebook.search"
+  }
+}
+```
+
+Rules:
+
+- Resolve `name` only against the authenticated agent and selected user's allowed MCP tool list.
+- Enforce the same user, binding, permission, secret resolution, input validation, adapter dispatch, output validation, audit and usage rules as `POST /v1/invoke/{capability_id}`.
+- Unknown or unauthorized tool names fail closed with the standard safe `capability_denied` response.
+- The response exposes normalized adapter data only, never upstream URLs, secrets or raw upstream response bodies.
 
 ### POST /v1/invoke/{capability_id}
 

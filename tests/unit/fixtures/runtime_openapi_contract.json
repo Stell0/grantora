@@ -172,6 +172,87 @@
         ]
       }
     },
+    "/v1/mcp/tools": {
+      "get": {
+        "operationId": "list_mcp_tools_v1_mcp_tools_get",
+        "tags": [
+          "runtime"
+        ],
+        "parameters": [
+          {
+            "name": "user",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "User"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": [
+          "200",
+          "422"
+        ]
+      }
+    },
+    "/v1/mcp/call": {
+      "post": {
+        "operationId": "call_mcp_tool_v1_mcp_call_post",
+        "tags": [
+          "runtime"
+        ],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPToolCallRequest"
+              }
+            }
+          }
+        },
+        "responses": [
+          "200",
+          "422"
+        ]
+      }
+    },
     "/v1/usage/me": {
       "get": {
         "operationId": "get_usage_me_v1_usage_me_get",

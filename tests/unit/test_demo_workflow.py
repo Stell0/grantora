@@ -77,6 +77,21 @@ class FakeGrantoraAPI:
         if path == "/v1/capabilities" and token == self.agent_token:
             capabilities = self.capabilities if query.get("user") == "alice" else []
             return {"capabilities": capabilities, "limit": 100, "offset": 0}
+        if path == "/v1/mcp/tools" and token == self.agent_token:
+            tools = []
+            if query.get("user") == "alice":
+                tools = [
+                    {
+                        "name": "mock_phonebook_search",
+                        "description": "Search phonebook",
+                        "inputSchema": {},
+                        "_meta": {
+                            "grantora/capability_id": "mock.phonebook.search",
+                            "grantora/invocation_path": "/v1/invoke/mock.phonebook.search",
+                        },
+                    }
+                ]
+            return {"tools": tools}
         raise AssertionError(f"unexpected GET {path}")
 
     def post(
@@ -131,6 +146,18 @@ class FakeGrantoraAPI:
             return {"status": "ok", "checked_routes": 1, "changed_routes": 0}
         if path == "/v1/invoke/mock.phonebook.search" and token == self.agent_token:
             return {"status": "ok", "capability": "mock.phonebook.search", "data": {"contacts": []}}
+        if path == "/v1/mcp/call" and token == self.agent_token:
+            assert payload == {
+                "user": "alice",
+                "name": "mock_phonebook_search",
+                "arguments": {"query": "Mario", "limit": 5},
+            }
+            return {
+                "content": [{"type": "text", "text": '{"contacts":[]}'}],
+                "structuredContent": {"contacts": []},
+                "isError": False,
+                "_meta": {"grantora/capability_id": "mock.phonebook.search"},
+            }
         raise AssertionError(f"unexpected POST {path}")
 
     @staticmethod
@@ -211,6 +238,8 @@ def test_smoke_checks_health_sync_discovery_and_invocation(tmp_path) -> None:
         "apisix-sync",
         "runtime-discovery",
         "mock-invocation",
+        "mcp-tool-discovery",
+        "mcp-tool-call",
     ]
 
 

@@ -40,6 +40,26 @@ Integration and e2e tests skip external infrastructure checks unless the documen
 
 Supported real provider templates currently include `nethvoice.phonebook.search` and `nextcloud.files.search`. Admins can list templates with `GET /v1/admin/capability-templates` and create a capability with `POST /v1/admin/capabilities/from-template`.
 
+## Agent Tooling
+
+Agents can use either filtered OpenAPI or Grantora's MCP-compatible HTTP JSON surface through APISIX. The MCP surface is authenticated with the same agent bearer token and is scoped to the selected user.
+
+After `make demo-seed`, use the generated demo token to list tools and call one tool:
+
+```bash
+source .grantora-demo.env
+
+curl -sS 'http://localhost:9080/v1/mcp/tools?user=alice' \
+    -H "Authorization: Bearer $DEMO_AGENT_TOKEN"
+
+curl -sS -X POST http://localhost:9080/v1/mcp/call \
+    -H "Authorization: Bearer $DEMO_AGENT_TOKEN" \
+    -H 'Content-Type: application/json' \
+    -d '{"user":"alice","name":"mock_phonebook_search","arguments":{"query":"Mario","limit":5}}'
+```
+
+`/v1/mcp/tools` and `/v1/capabilities/openapi.json` are generated from the same filtered capability set, so Hermes and other clients only see tools the agent can describe and invoke for that user.
+
 Useful local URLs:
 
 - Grantora API: `http://localhost:8080/healthz`
@@ -55,4 +75,4 @@ Useful local URLs:
 
 ## Development Status
 
-Status: Milestone 12 adapter expansion and provider readiness implemented. See [PLAN.md](PLAN.md) for the current roadmap status.
+Status: Milestone 13 MCP and agent tooling implemented. See [PLAN.md](PLAN.md) for the current roadmap status.

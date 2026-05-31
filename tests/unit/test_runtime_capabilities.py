@@ -244,6 +244,41 @@ def test_filtered_capability_openapi_matches_allowed_capability_contract(
     assert missing_user_response.json()["paths"] == {}
 
 
+def test_mcp_tools_endpoint_matches_filtered_capability_set(api_context: APIContext) -> None:
+    records = add_runtime_records(api_context)
+    add_unbound_capability(api_context, records)
+    add_disabled_capability_with_binding(api_context, records)
+    add_bound_capability_without_invoke_permission(api_context, records)
+
+    tools_response = api_context.client.get(
+        "/v1/mcp/tools?user=alice",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+    openapi_response = api_context.client.get(
+        "/v1/capabilities/openapi.json?user=alice",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+
+    assert tools_response.status_code == 200
+    assert openapi_response.status_code == 200
+    assert tools_response.json() == load_json_fixture("mcp_tool_list.json")
+    assert mcp_tool_capability_map(tools_response.json()) == openapi_tool_capability_map(
+        openapi_response.json()
+    )
+    assert "mock.phonebook.unbound" not in tools_response.text
+    assert "mock.phonebook.disabled" not in tools_response.text
+    assert "mock.phonebook.write" not in tools_response.text
+    assert "https://mock.example.test" not in tools_response.text
+
+    missing_user_response = api_context.client.get(
+        "/v1/mcp/tools?user=mallory",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+
+    assert missing_user_response.status_code == 200
+    assert missing_user_response.json() == {"tools": []}
+
+
 def test_runtime_usage_me_is_scoped_to_authenticated_agent(api_context: APIContext) -> None:
     records = add_runtime_records(api_context)
     add_secret(
@@ -346,6 +381,100 @@ def test_capability_invocation_validates_authorization_and_reaches_adapter(
     assert usage_event is not None
     assert usage_event.status == "success"
     assert usage_event.units == 2
+
+
+def test_mcp_tool_call_maps_to_capability_invocation(api_context: APIContext) -> None:
+    records = add_runtime_records(api_context)
+    add_secret(
+        api_context, records, owner_type="user", owner_id=records.user_id, value="user-token"
+    )
+
+    response = api_context.client.post(
+        "/v1/mcp/call",
+        headers={**authorization_headers("grt_agent_runtime"), "X-Request-Id": "req_mcp_call"},
+        json={
+            "user": "alice",
+            "name": "mock_phonebook_search",
+            "arguments": {"query": "Mario", "limit": 5},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "content": [{"type": "text", "text": '{"contacts":[]}'}],
+        "structuredContent": {"contacts": []},
+        "isError": False,
+        "_meta": {
+            "grantora/request_id": "req_mcp_call",
+            "grantora/capability_id": "mock.phonebook.search",
+        },
+    }
+    assert api_context.adapter.calls == [
+        {
+            "capability_id": "mock.phonebook.search",
+            "input": {"query": "Mario", "limit": 5},
+            "context": api_context.adapter.calls[0]["context"],
+            "secret_type": "bearer_token",
+            "secret_value": "user-token",
+        }
+    ]
+    assert api_context.adapter.calls[0]["context"].user.external_id == "alice"
+
+    with api_context.database.session_factory() as session:
+        audit_event = session.scalar(
+            select(AuditEvent).where(AuditEvent.request_id == "req_mcp_call")
+        )
+        usage_event = session.scalar(
+            select(UsageEvent).where(UsageEvent.capability_id == records.capability_id)
+        )
+
+    assert audit_event is not None
+    assert audit_event.decision == "allow"
+    assert audit_event.outcome == "success"
+    assert audit_event.error_code is None
+    assert usage_event is not None
+    assert usage_event.status == "success"
+    assert usage_event.units == 2
+
+
+def test_mcp_tool_call_denies_unknown_tool_and_records_events(api_context: APIContext) -> None:
+    records = add_runtime_records(api_context)
+    add_secret(
+        api_context, records, owner_type="user", owner_id=records.user_id, value="user-token"
+    )
+
+    response = api_context.client.post(
+        "/v1/mcp/call",
+        headers={**authorization_headers("grt_agent_runtime"), "X-Request-Id": "req_mcp_denied"},
+        json={
+            "user": "alice",
+            "name": "mock_phonebook_unbound",
+            "arguments": {"query": "Mario"},
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"] == {
+        "code": "capability_denied",
+        "message": "Capability is not allowed for this agent and user",
+    }
+    assert api_context.adapter.calls == []
+
+    with api_context.database.session_factory() as session:
+        audit_event = session.scalar(
+            select(AuditEvent).where(AuditEvent.request_id == "req_mcp_denied")
+        )
+        usage_event = session.scalar(
+            select(UsageEvent).where(UsageEvent.capability_id == "mock_phonebook_unbound")
+        )
+
+    assert audit_event is not None
+    assert audit_event.decision == "deny"
+    assert audit_event.outcome == "error"
+    assert audit_event.error_code == "capability_denied"
+    assert audit_event.capability_id == "mock_phonebook_unbound"
+    assert usage_event is not None
+    assert usage_event.status == "denied"
 
 
 def test_builtin_mock_adapter_invocation_uses_default_registry(api_context: APIContext) -> None:
@@ -657,6 +786,18 @@ def runtime_openapi_contract(document: dict[str, Any]) -> dict[str, Any]:
             }
             for path, operations in document["paths"].items()
         },
+    }
+
+
+def mcp_tool_capability_map(tool_list: dict[str, Any]) -> dict[str, str]:
+    return {tool["name"]: tool["_meta"]["grantora/capability_id"] for tool in tool_list["tools"]}
+
+
+def openapi_tool_capability_map(document: dict[str, Any]) -> dict[str, str]:
+    return {
+        operation["x-grantora-tool-name"]: operation["x-grantora-capability-id"]
+        for operations in document["paths"].values()
+        for operation in operations.values()
     }
 
 

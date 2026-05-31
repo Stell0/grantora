@@ -42,7 +42,7 @@ Assessed on 2026-05-31 against `src/grantora/`, `tests/unit/`, `CONTRACTS.md`, `
 - [ ] `.env.example` contains future variables not present in `Settings`. Test: environment reference test or docs check keeps `.env.example`, `Settings` and this plan aligned.
 - [x] The bootstrap path is packaged as `make demo-seed` plus `make smoke` through compose and APISIX. Test: workflow and smoke unit tests cover idempotent seeding and failing checks; full compose remains a manual/e2e check.
 - [x] NethVoice phonebook and Nextcloud files search are implemented as real adapters. Test: each real adapter has unit normalization/error mapping tests and integration tests with mock upstream transports.
-- [ ] MCP tool listing is an internal generator only. Test: expose and verify the final agent-facing MCP transport or endpoint selected for product use.
+- [x] MCP tool listing is exposed through authenticated runtime HTTP endpoints with a tool-call bridge. Test: runtime MCP endpoint tests and smoke workflow checks verify filtered discovery and invocation.
 - [ ] No production CI, release packaging, image publishing, SBOM, dependency scan or NS8 module packaging is defined yet. Test: release pipeline creates reproducible artifacts and runs all gates.
 
 ## Full Software Definition
@@ -132,12 +132,12 @@ Goal: move from one real capability to a reusable multi-application gateway.
 
 Goal: make agent discovery usable by Hermes and other MCP/OpenAPI consumers.
 
-- [ ] Decide and document the product MCP surface: HTTP endpoint, server-sent session, stdio bridge or generated descriptor only. Test: contract tests cover the selected surface.
-- [ ] Expose MCP-compatible tool listing through the selected authenticated runtime endpoint if needed by agents. Test: only allowed capabilities appear and names remain stable.
-- [ ] Add invocation mapping from MCP tool call to `POST /v1/invoke/{capability_id}` when Grantora owns that bridge. Test: tool call enforces the same user, binding, secret and audit rules.
-- [ ] Add examples for Hermes or a generic MCP client. Test: example uses a generated token and performs discovery plus one invocation.
-- [ ] Keep OpenAPI and MCP generation from the same filtered capability set. Test: a fixture asserts both surfaces contain equivalent allowed capabilities.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] Decide and document the product MCP surface: HTTP endpoint, server-sent session, stdio bridge or generated descriptor only. Test: contract tests cover the selected surface.
+- [x] Expose MCP-compatible tool listing through the selected authenticated runtime endpoint if needed by agents. Test: only allowed capabilities appear and names remain stable.
+- [x] Add invocation mapping from MCP tool call to `POST /v1/invoke/{capability_id}` when Grantora owns that bridge. Test: tool call enforces the same user, binding, secret and audit rules.
+- [x] Add examples for Hermes or a generic MCP client. Test: example uses a generated token and performs discovery plus one invocation.
+- [x] Keep OpenAPI and MCP generation from the same filtered capability set. Test: a fixture asserts both surfaces contain equivalent allowed capabilities.
+- [x] output git commands to add files and commit changes using a conventional commit
 
 ## Milestone 14 - APISIX Production Data Plane
 

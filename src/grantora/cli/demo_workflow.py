@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
+from grantora.openapi.tools import capability_tool_name
+
 JSONDict = dict[str, Any]
 Action = Literal["created", "reused"]
 
@@ -275,6 +277,8 @@ def run_smoke(
         _check_apisix_sync(admin_client, config),
         _check_discovery(runtime_client, config),
         _check_invocation(runtime_client, config),
+        _check_mcp_tools(runtime_client, config),
+        _check_mcp_call(runtime_client, config),
     ]
     return checks
 
@@ -619,6 +623,39 @@ def _check_invocation(client: GrantoraClient, config: SmokeConfig) -> CheckRepor
     if body.get("status") != "ok" or body.get("capability") != config.capability_id:
         raise WorkflowError("Mock invocation did not return a successful capability response")
     return CheckReport("mock-invocation", "ok", "adapter returned status ok")
+
+
+def _check_mcp_tools(client: GrantoraClient, config: SmokeConfig) -> CheckReport:
+    body = client.get(
+        "/v1/mcp/tools",
+        token=config.agent_token,
+        query={"user": config.user_external_id},
+    )
+    tool_name = capability_tool_name(config.capability_id)
+    for tool in body.get("tools", []):
+        if (
+            tool.get("name") == tool_name
+            and tool.get("_meta", {}).get("grantora/capability_id") == config.capability_id
+        ):
+            return CheckReport("mcp-tool-discovery", "ok", f"found {tool_name}")
+    raise WorkflowError(f"MCP tool discovery did not include required tool {tool_name!r}")
+
+
+def _check_mcp_call(client: GrantoraClient, config: SmokeConfig) -> CheckReport:
+    body = client.post(
+        "/v1/mcp/call",
+        token=config.agent_token,
+        payload={
+            "user": config.user_external_id,
+            "name": capability_tool_name(config.capability_id),
+            "arguments": config.invocation_input or {"query": "Mario", "limit": 5},
+        },
+    )
+    if body.get("isError") is not False:
+        raise WorkflowError("MCP tool call reported an error")
+    if body.get("_meta", {}).get("grantora/capability_id") != config.capability_id:
+        raise WorkflowError("MCP tool call did not return the expected capability metadata")
+    return CheckReport("mcp-tool-call", "ok", "tool call returned normalized data")
 
 
 def _phonebook_input_schema() -> JSONDict:
