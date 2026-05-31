@@ -12,7 +12,9 @@ from grantora.adapters.templates import get_capability_template, list_capability
 from grantora.api.errors import GrantoraAPIError, get_request_id
 from grantora.apisix import (
     ApisixAdminClient,
+    ApisixRouteDriftResult,
     ApisixSyncResult,
+    check_apisix_route_drift,
     get_apisix_sync_status,
     reconcile_apisix_routes,
 )
@@ -81,6 +83,7 @@ from grantora.schemas import (
     AdminWorkspaceListResponse,
     AdminWorkspaceResponse,
     AgentAdminSummary,
+    ApisixRouteDriftSummary,
     ApisixSyncErrorSummary,
     ApplicationAdminSummary,
     AuditEventAdminSummary,
@@ -998,14 +1001,20 @@ async def sync_apisix_routes(
 
 
 @router.get("/apisix/status", response_model=AdminApisixStatusResponse)
-def get_apisix_status(
+async def get_apisix_status(
+    request: Request,
     _admin: AdminBootstrap,
     session: DatabaseSession,
+    include_drift: bool = False,
 ) -> AdminApisixStatusResponse:
     sync_status = get_apisix_sync_status(session)
+    route_drift = await _get_apisix_route_drift(request, session) if include_drift else None
     if sync_status is None:
-        return AdminApisixStatusResponse(status="never_run")
-    return _apisix_status_response_from_model(sync_status)
+        return AdminApisixStatusResponse(
+            status="never_run",
+            route_drift=route_drift or ApisixRouteDriftSummary(),
+        )
+    return _apisix_status_response_from_model(sync_status, route_drift=route_drift)
 
 
 def _flush_or_conflict(session: Session, code: str, message: str) -> None:
@@ -1405,6 +1414,8 @@ def _apisix_sync_response_from_result(
 
 def _apisix_status_response_from_model(
     sync_status: ApisixSyncStatus,
+    *,
+    route_drift: ApisixRouteDriftSummary | None = None,
 ) -> AdminApisixStatusResponse:
     return AdminApisixStatusResponse(
         status=sync_status.status,
@@ -1413,6 +1424,30 @@ def _apisix_status_response_from_model(
         checked_routes=sync_status.checked_routes,
         changed_routes=sync_status.changed_routes,
         error=_apisix_error_summary(sync_status.error_code, sync_status.safe_message),
+        route_drift=route_drift or ApisixRouteDriftSummary(),
+    )
+
+
+async def _get_apisix_route_drift(
+    request: Request,
+    session: Session,
+) -> ApisixRouteDriftSummary:
+    settings = request.app.state.settings
+    client_factory = _get_apisix_client_factory(request)
+    async with client_factory(settings) as apisix_client:
+        result = await check_apisix_route_drift(session, settings, apisix_client)
+    return _apisix_route_drift_response_from_result(result)
+
+
+def _apisix_route_drift_response_from_result(
+    result: ApisixRouteDriftResult,
+) -> ApisixRouteDriftSummary:
+    return ApisixRouteDriftSummary(
+        status=result.status,
+        checked_routes=result.checked_routes,
+        drifted_routes=result.drifted_routes,
+        missing_routes=result.missing_routes,
+        error=_apisix_error_summary(result.error_code, result.safe_message),
     )
 
 

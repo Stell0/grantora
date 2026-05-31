@@ -5,6 +5,11 @@
     "version": "0.1.0",
     "description": "Capability operations allowed for the authenticated agent and user."
   },
+  "servers": [
+    {
+      "url": "http://localhost:9080"
+    }
+  ],
   "paths": {
     "/v1/invoke/mock.phonebook.search": {
       "post": {

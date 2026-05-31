@@ -37,9 +37,9 @@ Assessed on 2026-05-31 against `src/grantora/`, `tests/unit/`, `CONTRACTS.md`, `
 
 - [x] `GET /v1/usage/me` is contracted in `STRUCTURE.md` and `CONTRACTS.md` and implemented for authenticated agent scope. Test: runtime usage summary tests for authenticated agent scope.
 - [x] `tests/integration/` and `tests/e2e/` flows cover PostgreSQL, APISIX and full-through-APISIX suites. Test: env-gated integration/e2e tiers skip when infrastructure variables are absent and fail when configured infrastructure is broken.
-- [ ] Compose exposes settings such as `MIGRATIONS_AUTO_RUN`, `APISIX_SYNC_ENABLED`, `APISIX_SYNC_INTERVAL_SECONDS`, `APISIX_FAIL_CLOSED`, retention values and feature flags that are not fully wired in code. Test: settings contract tests document which variables are active and which are reserved.
+- [ ] Compose exposes settings such as retention values and feature flags that are not fully wired in code. Test: settings contract tests document which variables are active and which are reserved.
 - [x] The Docker image runs Alembic migrations before Uvicorn when `MIGRATIONS_AUTO_RUN=true`. Test: entrypoint tests cover enabled, disabled and invalid values.
-- [ ] `.env.example` contains future variables not present in `Settings`. Test: environment reference test or docs check keeps `.env.example`, `Settings` and this plan aligned.
+- [ ] `.env.example` contains some future variables not present in `Settings`. Test: environment reference test or docs check keeps `.env.example`, `Settings` and this plan aligned.
 - [x] The bootstrap path is packaged as `make demo-seed` plus `make smoke` through compose and APISIX. Test: workflow and smoke unit tests cover idempotent seeding and failing checks; full compose remains a manual/e2e check.
 - [x] NethVoice phonebook and Nextcloud files search are implemented as real adapters. Test: each real adapter has unit normalization/error mapping tests and integration tests with mock upstream transports.
 - [x] MCP tool listing is exposed through authenticated runtime HTTP endpoints with a tool-call bridge. Test: runtime MCP endpoint tests and smoke workflow checks verify filtered discovery and invocation.
@@ -143,13 +143,13 @@ Goal: make agent discovery usable by Hermes and other MCP/OpenAPI consumers.
 
 Goal: make APISIX reconciliation operationally safe and automatic.
 
-- [ ] Implement optional startup or background APISIX sync according to `APISIX_SYNC_ENABLED` and `APISIX_SYNC_INTERVAL_SECONDS`. Test: disabled mode never writes; enabled mode syncs idempotently.
-- [ ] Implement or remove `APISIX_FAIL_CLOSED`; if implemented, unsafe sync failures must not broaden access. Test: simulated Admin API failure preserves last safe route state.
-- [ ] Restrict APISIX Admin API exposure in production examples. Test: compose/production config checks do not publish Admin API unintentionally.
-- [ ] Add TLS and public base URL guidance for deployments where APISIX terminates TLS. Test: generated OpenAPI server URL uses configured public base URL when enabled.
-- [ ] Add APISIX route management for future admin/runtime split if needed. Test: admin endpoints are never exposed through public APISIX routes unless explicitly intended.
-- [ ] Add route drift reporting. Test: status endpoint can report current APISIX route differs from desired PostgreSQL state without leaking admin details.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] Implement optional startup or background APISIX sync according to `APISIX_SYNC_ENABLED` and `APISIX_SYNC_INTERVAL_SECONDS`. Test: disabled mode never writes; enabled mode syncs idempotently.
+- [x] Implement or remove `APISIX_FAIL_CLOSED`; if implemented, unsafe sync failures must not broaden access. Test: simulated Admin API failure preserves last safe route state.
+- [x] Restrict APISIX Admin API exposure in production examples. Test: compose/production config checks do not publish Admin API unintentionally.
+- [x] Add TLS and public base URL guidance for deployments where APISIX terminates TLS. Test: generated OpenAPI server URL uses configured public base URL when enabled.
+- [x] Add APISIX route management for future admin/runtime split if needed. Test: admin endpoints are never exposed through public APISIX routes unless explicitly intended.
+- [x] Add route drift reporting. Test: status endpoint can report current APISIX route differs from desired PostgreSQL state without leaking admin details.
+- [x] output git commands to add files and commit changes using a conventional commit
 
 ## Milestone 15 - Observability, Retention And Operations
 
@@ -252,6 +252,9 @@ These variables are read by the current `Settings` class or the current compose 
 | `APISIX_ADMIN_URL` | Internal APISIX Admin API URL | `http://apisix:9180` | Must remain internal in production. |
 | `APISIX_ADMIN_KEY` | APISIX Admin API key | `change-me` | Must be changed outside local dev. |
 | `APISIX_ADMIN_TIMEOUT_SECONDS` | APISIX Admin API timeout | `5` | Positive float. |
+| `APISIX_SYNC_ENABLED` | Automatic APISIX sync toggle | `false` in `Settings`, `true` in local compose | Startup and background reconciliation are disabled unless enabled by environment. |
+| `APISIX_SYNC_INTERVAL_SECONDS` | Background APISIX sync interval | `30` | Positive integer seconds. |
+| `APISIX_FAIL_CLOSED` | Fail-closed APISIX sync behavior | `true` | Preloads current route state before writes. |
 | `APISIX_RUNTIME_UPSTREAM_NODE` | APISIX upstream node for Grantora API | `grantora-api:8080` | Used in desired runtime route. |
 | `APISIX_RATE_LIMIT_COUNT` | APISIX baseline rate limit count | `1000` | Positive integer. |
 | `APISIX_RATE_LIMIT_TIME_WINDOW` | APISIX rate limit window seconds | `60` | Positive integer. |
@@ -274,9 +277,6 @@ These appear in `.env.example` or the product docs but are not fully wired in th
 | --- | --- | --- |
 | `DATABASE_SSLMODE` | PostgreSQL TLS mode | Wire through database URL or remove from example. |
 | `APISIX_PUBLIC_URL` | Public APISIX base URL | Align with `GRANTORA_PUBLIC_BASE_URL` or use for APISIX-specific docs. |
-| `APISIX_SYNC_ENABLED` | Automatic APISIX sync toggle | Milestone 14. |
-| `APISIX_SYNC_INTERVAL_SECONDS` | Background sync interval | Milestone 14. |
-| `APISIX_FAIL_CLOSED` | Fail-closed data-plane behavior | Milestone 14. |
 | `METRICS_PATH` | Custom metrics path | Either implement or remove. |
 | `AUDIT_ENABLED` | Audit toggle | Audit is mandatory; remove or define carefully. |
 | `AUDIT_RETENTION_DAYS` | Audit retention period | Milestone 15. |

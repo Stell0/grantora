@@ -14,6 +14,17 @@ from grantora.metrics import now, record_apisix_sync
 
 APISIX_SYNC_STATUS_ID = "default"
 DEFAULT_RUNTIME_ROUTE_ID = "gateway-runtime"
+DEFAULT_RUNTIME_ROUTE_URI = "/v1/runtime/*"
+DEFAULT_RUNTIME_ROUTE_URIS = (
+    "/v1/me",
+    "/v1/capabilities",
+    "/v1/capabilities/openapi.json",
+    "/v1/openapi.json",
+    "/v1/invoke/*",
+    "/v1/usage/me",
+    "/v1/mcp/tools",
+    "/v1/mcp/call",
+)
 
 
 class ApisixRouteClient(Protocol):
@@ -31,6 +42,16 @@ class ApisixSyncResult:
     safe_message: str | None = None
 
 
+@dataclass(frozen=True)
+class ApisixRouteDriftResult:
+    status: Literal["in_sync", "drifted", "error"]
+    checked_routes: int
+    drifted_routes: int
+    missing_routes: int
+    error_code: str | None = None
+    safe_message: str | None = None
+
+
 async def reconcile_apisix_routes(
     session: Session,
     settings: Settings,
@@ -44,9 +65,16 @@ async def reconcile_apisix_routes(
     routes = list(session.scalars(select(ApisixRoute).order_by(ApisixRoute.id)).all())
     changed_routes = 0
     try:
+        current_routes = (
+            await _load_current_routes(routes, client) if settings.apisix_fail_closed else {}
+        )
         for route in routes:
             desired_route = build_apisix_route_payload(route, settings)
-            current_route = await client.get_route(route.id)
+            current_route = (
+                current_routes[route.id]
+                if settings.apisix_fail_closed
+                else await client.get_route(route.id)
+            )
             if current_route is None or not route_matches_desired(current_route, desired_route):
                 await client.put_route(route.id, desired_route)
                 changed_routes += 1
@@ -81,31 +109,100 @@ async def reconcile_apisix_routes(
     return result
 
 
+async def check_apisix_route_drift(
+    session: Session,
+    settings: Settings,
+    client: ApisixRouteClient,
+) -> ApisixRouteDriftResult:
+    routes = desired_apisix_routes(session, settings)
+    drifted_routes = 0
+    missing_routes = 0
+    try:
+        for route in routes:
+            desired_route = build_apisix_route_payload(route, settings)
+            current_route = await client.get_route(route.id)
+            if current_route is None:
+                missing_routes += 1
+                drifted_routes += 1
+            elif not route_matches_desired(current_route, desired_route):
+                drifted_routes += 1
+    except ApisixAdminAPIError as exc:
+        return ApisixRouteDriftResult(
+            status="error",
+            checked_routes=len(routes),
+            drifted_routes=drifted_routes,
+            missing_routes=missing_routes,
+            error_code=exc.code,
+            safe_message=exc.safe_message,
+        )
+    except Exception:
+        return ApisixRouteDriftResult(
+            status="error",
+            checked_routes=len(routes),
+            drifted_routes=drifted_routes,
+            missing_routes=missing_routes,
+            error_code="apisix_drift_check_failed",
+            safe_message="APISIX route drift check failed",
+        )
+
+    return ApisixRouteDriftResult(
+        status="drifted" if drifted_routes else "in_sync",
+        checked_routes=len(routes),
+        drifted_routes=drifted_routes,
+        missing_routes=missing_routes,
+    )
+
+
+async def _load_current_routes(
+    routes: list[ApisixRoute],
+    client: ApisixRouteClient,
+) -> dict[str, dict[str, Any] | None]:
+    current_routes: dict[str, dict[str, Any] | None] = {}
+    for route in routes:
+        current_routes[route.id] = await client.get_route(route.id)
+    return current_routes
+
+
 def ensure_default_runtime_route(session: Session, settings: Settings) -> ApisixRoute:
     route = session.get(ApisixRoute, DEFAULT_RUNTIME_ROUTE_ID)
     if route is not None:
         return route
 
-    route = ApisixRoute(
-        id=DEFAULT_RUNTIME_ROUTE_ID,
-        name="Grantora runtime API",
-        uri="/v1/*",
-        upstream=default_upstream(settings),
-        plugins=baseline_plugins(settings),
-    )
+    route = default_runtime_route(settings)
     session.add(route)
     session.flush()
     return route
 
 
+def desired_apisix_routes(session: Session, settings: Settings) -> list[ApisixRoute]:
+    routes = list(session.scalars(select(ApisixRoute).order_by(ApisixRoute.id)).all())
+    if any(route.id == DEFAULT_RUNTIME_ROUTE_ID for route in routes):
+        return routes
+    return [default_runtime_route(settings), *routes]
+
+
+def default_runtime_route(settings: Settings) -> ApisixRoute:
+    return ApisixRoute(
+        id=DEFAULT_RUNTIME_ROUTE_ID,
+        name="Grantora runtime API",
+        uri=DEFAULT_RUNTIME_ROUTE_URI,
+        upstream=default_upstream(settings),
+        plugins=baseline_plugins(settings),
+    )
+
+
 def build_apisix_route_payload(route: ApisixRoute, settings: Settings) -> dict[str, Any]:
-    return {
+    payload = {
         "name": route.name,
-        "uri": route.uri,
         "upstream": route.upstream,
         "plugins": {**baseline_plugins(settings), **route.plugins},
         "status": 1 if route.status == ACTIVE_STATUS else 0,
     }
+    if route.id == DEFAULT_RUNTIME_ROUTE_ID:
+        payload["uris"] = list(DEFAULT_RUNTIME_ROUTE_URIS)
+    else:
+        payload["uri"] = route.uri
+    return payload
 
 
 def route_matches_desired(current_route: dict[str, Any], desired_route: dict[str, Any]) -> bool:

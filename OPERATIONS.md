@@ -203,19 +203,36 @@ Templates include JSON Schemas, adapter ids, required secret types and required 
 
 Grantora stores desired APISIX routes in PostgreSQL and reconciles them through the APISIX Admin API.
 
+Automatic sync is controlled by:
+
+- `APISIX_SYNC_ENABLED`: when true, Grantora runs one startup sync and then schedules background reconciliation.
+- `APISIX_SYNC_INTERVAL_SECONDS`: interval between background reconciliation attempts.
+- `APISIX_FAIL_CLOSED`: when true, Grantora preloads current APISIX route state before writing so Admin API read failures preserve the last known route state.
+
 Operational rules:
 
 - PostgreSQL desired state wins.
 - Manual APISIX changes may be overwritten.
 - APISIX Admin API must be internal-only outside local development.
+- Local compose binds the APISIX Admin API to `127.0.0.1:${APISIX_ADMIN_PORT:-9180}`; do not publish it on public interfaces in production examples.
+- Public APISIX routes expose runtime endpoints only; admin endpoints stay on the direct Grantora API and require the admin bootstrap token.
 - Failed sync must not open access broader than the previous safe route state.
 
-Manual sync endpoint after implementation:
+Manual sync endpoint:
 
 ```bash
 curl -X POST http://localhost:8080/v1/admin/apisix/sync \
   -H "Authorization: Bearer $ADMIN_BOOTSTRAP_TOKEN"
 ```
+
+Check last sync status and optional route drift:
+
+```bash
+curl -sS 'http://localhost:8080/v1/admin/apisix/status?include_drift=true' \
+  -H "Authorization: Bearer $ADMIN_BOOTSTRAP_TOKEN"
+```
+
+When APISIX terminates TLS, set `GRANTORA_PUBLIC_BASE_URL` to the external HTTPS URL, for example `https://gateway.example.test`. Runtime OpenAPI and filtered capability OpenAPI use that URL in their `servers` list so agents do not learn internal container URLs.
 
 ## Health Checks
 

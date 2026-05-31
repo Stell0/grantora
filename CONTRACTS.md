@@ -53,6 +53,7 @@ Returns the static OpenAPI document for the authenticated runtime API.
 Rules:
 
 - Include runtime endpoints only.
+- Include a `servers` entry using `GRANTORA_PUBLIC_BASE_URL` when configured.
 - Do not include admin APIs, health APIs or observability APIs.
 - Do not include upstream URLs, secrets or adapter private configuration.
 
@@ -67,6 +68,7 @@ Query parameters:
 Rules:
 
 - Include only allowed capabilities.
+- Include a `servers` entry using `GRANTORA_PUBLIC_BASE_URL` when configured.
 - Use stable operation ids derived from capability ids.
 - Include capability-specific invocation paths that map back to capability ids.
 - Do not include admin APIs.
@@ -786,13 +788,15 @@ Rules:
 
 - Authenticate the admin bootstrap token.
 - Seed the default `gateway-runtime` desired route when absent.
-- Compare current APISIX route state before writing.
+- Compare current APISIX route state before writing. When `APISIX_FAIL_CLOSED=true`, load all current route state before any write so Admin API failures preserve the last known data-plane route state.
 - Running sync twice without desired-state changes must not perform a second APISIX update.
 - Responses must not include the APISIX Admin URL, API key, upstream response body or stack trace.
 
+Automatic reconciliation is enabled when `APISIX_SYNC_ENABLED=true`. Grantora runs one startup sync and then repeats sync every `APISIX_SYNC_INTERVAL_SECONDS` seconds until shutdown.
+
 ### GET /v1/admin/apisix/status
 
-Returns the last APISIX sync status, or `never_run` when no sync has been attempted.
+Returns the last APISIX sync status, or `never_run` when no sync has been attempted. Add `include_drift=true` to compare the current APISIX route state with Grantora's desired PostgreSQL state.
 
 Response fields:
 
@@ -803,13 +807,21 @@ Response fields:
   "last_finished_at": "datetime | null",
   "checked_routes": 0,
   "changed_routes": 0,
-  "error": null
+  "error": null,
+  "route_drift": {
+    "status": "not_checked | in_sync | drifted | error",
+    "checked_routes": 0,
+    "drifted_routes": 0,
+    "missing_routes": 0,
+    "error": null
+  }
 }
 ```
 
 Rules:
 
 - Authenticate the admin bootstrap token.
+- Do not call the APISIX Admin API unless `include_drift=true`.
 - Return only stable error codes and safe messages.
 - Do not expose APISIX Admin URL, API key, internal URLs, raw response bodies or stack traces.
 
@@ -1120,7 +1132,7 @@ safe_message: string | null
 
 ```yaml
 id: gateway-runtime
-uri: /v1/*
+uri: /v1/runtime/*
 upstream:
   type: roundrobin
   nodes:
@@ -1132,6 +1144,16 @@ plugins:
     count: 1000
     time_window: 60
     rejected_code: 429
+apisix_payload:
+  uris:
+    - /v1/me
+    - /v1/capabilities
+    - /v1/capabilities/openapi.json
+    - /v1/openapi.json
+    - /v1/invoke/*
+    - /v1/usage/me
+    - /v1/mcp/tools
+    - /v1/mcp/call
 ```
 
 Rules:
@@ -1139,4 +1161,5 @@ Rules:
 - PostgreSQL desired state wins.
 - Reconciliation must be idempotent.
 - Unsafe sync failures must leave existing safe routes in place.
+- Public APISIX routes expose runtime endpoints only; `/v1/admin/*` is not part of the public data-plane route set.
 - Manual APISIX changes may be overwritten.

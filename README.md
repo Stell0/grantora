@@ -64,7 +64,9 @@ Useful local URLs:
 
 - Grantora API: `http://localhost:8080/healthz`
 - APISIX public entrypoint: `http://localhost:9080`
-- APISIX Admin API: `http://localhost:9180`
+- APISIX Admin API: `http://localhost:9180` bound to localhost by local compose
+
+For deployments where APISIX terminates TLS, set `GRANTORA_PUBLIC_BASE_URL` to the external HTTPS URL. Generated runtime and capability OpenAPI documents advertise that URL in `servers`, while public APISIX routes expose runtime endpoints only and leave `/v1/admin/*` on the direct Grantora API.
 
 ## Main References
 
@@ -75,4 +77,4 @@ Useful local URLs:
 
 ## Development Status
 
-Status: Milestone 13 MCP and agent tooling implemented. See [PLAN.md](PLAN.md) for the current roadmap status.
+Status: Milestone 14 APISIX production data-plane implemented. See [PLAN.md](PLAN.md) for the current roadmap status.

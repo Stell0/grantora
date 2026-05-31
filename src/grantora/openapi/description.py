@@ -12,23 +12,34 @@ from grantora.db.models import Capability
 from grantora.openapi.tools import capability_tool_name
 
 
-def build_runtime_openapi(routes: Sequence[Any]) -> dict[str, Any]:
+def build_runtime_openapi(
+    routes: Sequence[Any],
+    *,
+    public_base_url: str | None = None,
+) -> dict[str, Any]:
     runtime_routes = [
         route
         for route in routes
         if isinstance(route, APIRoute) and "runtime" in route.tags and route.include_in_schema
     ]
-    return get_openapi(
+    document = get_openapi(
         title="Grantora Runtime API",
         version=__version__,
         description="Authenticated runtime API for Grantora agents.",
         routes=runtime_routes,
     )
+    _add_public_server(document, public_base_url)
+    return document
 
 
-def build_capability_openapi(capabilities: Iterable[Capability], *, user: str) -> dict[str, Any]:
+def build_capability_openapi(
+    capabilities: Iterable[Capability],
+    *,
+    user: str,
+    public_base_url: str | None = None,
+) -> dict[str, Any]:
     sorted_capabilities = sorted(capabilities, key=lambda capability: capability.id)
-    return {
+    document = {
         "openapi": "3.1.0",
         "info": {
             "title": "Grantora Allowed Capabilities",
@@ -60,6 +71,17 @@ def build_capability_openapi(capabilities: Iterable[Capability], *, user: str) -
             }
         },
     }
+    _add_public_server(document, public_base_url)
+    return document
+
+
+def _add_public_server(document: dict[str, Any], public_base_url: str | None) -> None:
+    if public_base_url is None:
+        return
+    server_url = public_base_url.rstrip("/")
+    if not server_url:
+        return
+    document["servers"] = [{"url": server_url}]
 
 
 def capability_operation_id(capability_id: str) -> str:

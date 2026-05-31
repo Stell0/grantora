@@ -7,7 +7,11 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from grantora.apisix import reconcile_apisix_routes
+from grantora.apisix import (
+    DEFAULT_RUNTIME_ROUTE_URIS,
+    ApisixAdminAPIError,
+    reconcile_apisix_routes,
+)
 from grantora.config import Settings
 from grantora.db.models import ApisixRoute, ApisixSyncStatus, Base
 
@@ -24,6 +28,14 @@ class RecordingApisixClient:
         self.puts.append((route_id, route))
         self.routes[route_id] = route
         return route
+
+
+class FailingReadApisixClient(RecordingApisixClient):
+    async def get_route(self, route_id: str) -> dict[str, Any] | None:
+        raise ApisixAdminAPIError(
+            "apisix_admin_unavailable",
+            "APISIX Admin API is unavailable",
+        )
 
 
 @pytest.fixture()
@@ -64,12 +76,44 @@ async def test_reconcile_seeds_baseline_route_and_is_idempotent(session: Session
     }
     assert client.routes["gateway-runtime"] == {
         "name": "Grantora runtime API",
-        "uri": "/v1/*",
+        "uris": list(DEFAULT_RUNTIME_ROUTE_URIS),
         "upstream": {"type": "roundrobin", "nodes": {"grantora-api:8080": 1}},
         "plugins": route.plugins,
         "status": 1,
     }
+    assert "/v1/admin" not in client.routes["gateway-runtime"]["uris"]
+    assert "/v1/*" not in client.routes["gateway-runtime"]["uris"]
+    assert "uri" not in client.routes["gateway-runtime"]
     assert sync_status is not None
     assert sync_status.status == "ok"
     assert sync_status.checked_routes == 1
     assert sync_status.changed_routes == 0
+
+
+@pytest.mark.asyncio
+async def test_fail_closed_preflight_failure_preserves_existing_route(session: Session) -> None:
+    settings = Settings(
+        database_url="sqlite+pysqlite:///:memory:",
+        environment="test",
+        apisix_fail_closed=True,
+    )
+    existing_route = {
+        "name": "Grantora runtime API",
+        "uris": list(DEFAULT_RUNTIME_ROUTE_URIS),
+        "upstream": {"type": "roundrobin", "nodes": {"grantora-api:8080": 1}},
+        "plugins": {
+            "prometheus": {},
+            "request-id": {},
+            "limit-count": {"count": 1000, "time_window": 60, "rejected_code": 429},
+        },
+        "status": 1,
+    }
+    client = FailingReadApisixClient()
+    client.routes["gateway-runtime"] = existing_route.copy()
+
+    result = await reconcile_apisix_routes(session, settings, client)
+
+    assert result.status == "error"
+    assert result.error_code == "apisix_admin_unavailable"
+    assert client.puts == []
+    assert client.routes["gateway-runtime"] == existing_route

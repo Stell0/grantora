@@ -47,6 +47,7 @@ from grantora.schemas.admin import (
 from grantora.schemas.apisix import (
     AdminApisixStatusResponse,
     AdminApisixSyncResponse,
+    ApisixRouteDriftSummary,
     ApisixSyncErrorSummary,
 )
 from grantora.schemas.auth import (
@@ -118,6 +119,7 @@ __all__ = [
     "AgentAdminSummary",
     "AgentSummary",
     "ApplicationAdminSummary",
+    "ApisixRouteDriftSummary",
     "ApisixSyncErrorSummary",
     "AuditEventAdminSummary",
     "BindingAdminSummary",

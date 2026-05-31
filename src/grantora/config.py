@@ -59,6 +59,13 @@ class Settings(BaseSettings):
         gt=0,
         validation_alias="APISIX_ADMIN_TIMEOUT_SECONDS",
     )
+    apisix_sync_enabled: bool = Field(default=False, validation_alias="APISIX_SYNC_ENABLED")
+    apisix_sync_interval_seconds: int = Field(
+        default=30,
+        gt=0,
+        validation_alias="APISIX_SYNC_INTERVAL_SECONDS",
+    )
+    apisix_fail_closed: bool = Field(default=True, validation_alias="APISIX_FAIL_CLOSED")
     apisix_runtime_upstream_node: str = Field(
         default="grantora-api:8080",
         validation_alias="APISIX_RUNTIME_UPSTREAM_NODE",

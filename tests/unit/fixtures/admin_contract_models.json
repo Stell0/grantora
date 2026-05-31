@@ -18,6 +18,7 @@
       "error",
       "last_finished_at",
       "last_started_at",
+      "route_drift",
       "status"
     ],
     "AdminApisixSyncResponse": [

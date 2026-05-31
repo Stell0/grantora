@@ -210,6 +210,7 @@ def test_runtime_openapi_route_returns_runtime_schema_only(api_context: APIConte
 
     assert response.status_code == 200
     document = response.json()
+    assert document["servers"] == [{"url": api_context.settings.public_base_url}]
     assert all(not path.startswith("/v1/admin") for path in document["paths"])
     assert "/healthz" not in document["paths"]
     assert runtime_openapi_contract(document) == load_json_fixture("runtime_openapi_contract.json")
@@ -773,6 +774,7 @@ def load_json_fixture(filename: str) -> dict[str, Any]:
 def runtime_openapi_contract(document: dict[str, Any]) -> dict[str, Any]:
     return {
         "info": document["info"],
+        "servers": document["servers"],
         "paths": {
             path: {
                 method: {

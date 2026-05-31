@@ -100,22 +100,29 @@ def list_capabilities(
 
 @router.get("/openapi.json")
 def get_runtime_openapi(request: Request, agent: AuthenticatedAgent) -> dict[str, Any]:
-    return build_runtime_openapi(request.app.routes)
+    settings = request.app.state.settings
+    return build_runtime_openapi(request.app.routes, public_base_url=settings.public_base_url)
 
 
 @router.get("/capabilities/openapi.json")
 def get_capability_openapi(
+    request: Request,
     agent: AuthenticatedAgent,
     session: DatabaseSession,
     user: str = Query(min_length=1),
 ) -> dict[str, Any]:
     selected_user = get_active_user_by_external_id(session, agent.workspace_id, user)
     if selected_user is None:
-        return build_capability_openapi([], user=user)
+        return build_capability_openapi(
+            [],
+            user=user,
+            public_base_url=request.app.state.settings.public_base_url,
+        )
 
     return build_capability_openapi(
         _list_visible_capabilities(session, agent, selected_user),
         user=user,
+        public_base_url=request.app.state.settings.public_base_url,
     )
 
 

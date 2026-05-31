@@ -97,6 +97,13 @@ def test_admin_apisix_sync_is_idempotent_and_status_is_reported(
         "checked_routes": 0,
         "changed_routes": 0,
         "error": None,
+        "route_drift": {
+            "status": "not_checked",
+            "checked_routes": 0,
+            "drifted_routes": 0,
+            "missing_routes": 0,
+            "error": None,
+        },
     }
     assert first_sync_response.status_code == 200
     assert first_sync_response.json() == {
@@ -113,6 +120,7 @@ def test_admin_apisix_sync_is_idempotent_and_status_is_reported(
     assert final_status_response.status_code == 200
     assert final_status_response.json()["status"] == "ok"
     assert final_status_response.json()["changed_routes"] == 0
+    assert final_status_response.json()["route_drift"]["status"] == "not_checked"
     assert len(api_context.apisix_client.puts) == 1
     assert api_context.apisix_client.routes["gateway-runtime"]["plugins"] == {
         "prometheus": {},
@@ -151,6 +159,31 @@ def test_admin_apisix_sync_failure_reports_safe_status(tmp_path: Path) -> None:
     }
     assert settings.apisix_admin_url not in sync_response.text
     assert settings.apisix_admin_key not in sync_response.text
+
+
+def test_admin_apisix_status_reports_route_drift(api_context: APIContext) -> None:
+    sync_response = api_context.client.post(
+        "/v1/admin/apisix/sync",
+        headers=authorization_headers("admin-token"),
+    )
+    api_context.apisix_client.routes["gateway-runtime"] = {
+        **api_context.apisix_client.routes["gateway-runtime"],
+        "uris": ["/v1/*"],
+    }
+    status_response = api_context.client.get(
+        "/v1/admin/apisix/status?include_drift=true",
+        headers=authorization_headers("admin-token"),
+    )
+
+    assert sync_response.status_code == 200
+    assert status_response.status_code == 200
+    assert status_response.json()["route_drift"] == {
+        "status": "drifted",
+        "checked_routes": 1,
+        "drifted_routes": 1,
+        "missing_routes": 0,
+        "error": None,
+    }
 
 
 def make_test_settings(tmp_path: Path) -> Settings:
