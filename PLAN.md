@@ -47,12 +47,12 @@ This roadmap is the working build order for Grantora. Keep checkboxes current an
 
 ## Milestone 4 - APISIX Integration
 
-- [ ] Add APISIX Admin API client. Test: client can create, update and read a route against local APISIX.
-- [ ] Add `apisix_routes` desired-state table. Test: route definition round-trips through PostgreSQL.
-- [ ] Implement idempotent route reconciliation. Test: running sync twice produces no second change.
-- [ ] Add baseline plugins for request IDs, Prometheus and rate limiting. Test: reconciled route contains required plugin config.
-- [ ] Add `/v1/admin/apisix/sync` and `/v1/admin/apisix/status`. Test: admin endpoint reports last sync status safely.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] Add APISIX Admin API client. Test: client can create, update and read a route against local APISIX.
+- [x] Add `apisix_routes` desired-state table. Test: route definition round-trips through PostgreSQL.
+- [x] Implement idempotent route reconciliation. Test: running sync twice produces no second change.
+- [x] Add baseline plugins for request IDs, Prometheus and rate limiting. Test: reconciled route contains required plugin config.
+- [x] Add `/v1/admin/apisix/sync` and `/v1/admin/apisix/status`. Test: admin endpoint reports last sync status safely.
+- [x] output git commands to add files and commit changes using a conventional commit
 
 ## Milestone 5 - First Adapter
 

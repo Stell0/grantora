@@ -11,6 +11,8 @@ from grantora.db.models import (
     ACTIVE_STATUS,
     REVOKED_STATUS,
     Agent,
+    ApisixRoute,
+    ApisixSyncStatus,
     ApplicationInstance,
     AuditEvent,
     Base,
@@ -394,6 +396,45 @@ def test_audit_and_usage_events_can_record_decisions_and_statuses(session: Sessi
 
     assert audit_decisions == {"allow", "deny"}
     assert usage_statuses == {"success", "denied", "error"}
+
+
+def test_apisix_route_definition_and_sync_status_round_trip(session: Session) -> None:
+    route = ApisixRoute(
+        id="gateway-runtime",
+        name="Grantora runtime API",
+        uri="/v1/*",
+        upstream={"type": "roundrobin", "nodes": {"grantora-api:8080": 1}},
+        plugins={
+            "prometheus": {},
+            "request-id": {},
+            "limit-count": {"count": 1000, "time_window": 60, "rejected_code": 429},
+        },
+    )
+    sync_status = ApisixSyncStatus(
+        id="default",
+        status="ok",
+        checked_routes=1,
+        changed_routes=1,
+    )
+    session.add_all([route, sync_status])
+    session.commit()
+    session.expunge_all()
+
+    loaded_route = session.get(ApisixRoute, "gateway-runtime")
+    loaded_status = session.get(ApisixSyncStatus, "default")
+
+    assert loaded_route is not None
+    assert loaded_route.uri == "/v1/*"
+    assert loaded_route.upstream == {"type": "roundrobin", "nodes": {"grantora-api:8080": 1}}
+    assert loaded_route.plugins["limit-count"] == {
+        "count": 1000,
+        "time_window": 60,
+        "rejected_code": 429,
+    }
+    assert loaded_status is not None
+    assert loaded_status.status == "ok"
+    assert loaded_status.checked_routes == 1
+    assert loaded_status.changed_routes == 1
 
 
 def add_core_records(session: Session) -> CoreRecords:

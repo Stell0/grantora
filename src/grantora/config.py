@@ -52,6 +52,27 @@ class Settings(BaseSettings):
             "ADMIN_BOOTSTRAP_TOKEN_HASH",
         ),
     )
+    apisix_admin_url: str = Field(default="http://apisix:9180", validation_alias="APISIX_ADMIN_URL")
+    apisix_admin_key: str = Field(default="change-me", validation_alias="APISIX_ADMIN_KEY")
+    apisix_admin_timeout_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        validation_alias="APISIX_ADMIN_TIMEOUT_SECONDS",
+    )
+    apisix_runtime_upstream_node: str = Field(
+        default="grantora-api:8080",
+        validation_alias="APISIX_RUNTIME_UPSTREAM_NODE",
+    )
+    apisix_rate_limit_count: int = Field(
+        default=1000,
+        gt=0,
+        validation_alias="APISIX_RATE_LIMIT_COUNT",
+    )
+    apisix_rate_limit_time_window: int = Field(
+        default=60,
+        gt=0,
+        validation_alias="APISIX_RATE_LIMIT_TIME_WINDOW",
+    )
     metrics_enabled: bool = Field(default=True, validation_alias="METRICS_ENABLED")
     request_id_header: str = Field(default="X-Request-Id", validation_alias="REQUEST_ID_HEADER")
 

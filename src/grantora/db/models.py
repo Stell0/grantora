@@ -380,3 +380,34 @@ class UsageEvent(Base):
     agent: Mapped[Agent] = relationship(back_populates="usage_events")
     user: Mapped[User | None] = relationship(back_populates="usage_events")
     application_instance: Mapped[ApplicationInstance | None] = relationship()
+
+
+class ApisixRoute(Base):
+    __tablename__ = "apisix_routes"
+    __table_args__ = (Index("idx_apisix_routes_status", "status"),)
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    uri: Mapped[str] = mapped_column(String(2048), nullable=False)
+    upstream: Mapped[dict[str, Any]] = mapped_column(JSON_DOCUMENT, nullable=False, default=dict)
+    plugins: Mapped[dict[str, Any]] = mapped_column(JSON_DOCUMENT, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(String(32), default=ACTIVE_STATUS, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+
+class ApisixSyncStatus(Base):
+    __tablename__ = "apisix_sync_status"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    last_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    checked_routes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    changed_routes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(128))
+    safe_message: Mapped[str | None] = mapped_column(String(255))

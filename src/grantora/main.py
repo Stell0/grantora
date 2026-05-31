@@ -9,9 +9,18 @@ from grantora.api.admin import router as admin_router
 from grantora.api.errors import GrantoraAPIError, create_request_id, grantora_api_error_handler
 from grantora.api.health import router as health_router
 from grantora.api.runtime import router as runtime_router
+from grantora.apisix import ApisixAdminClient
 from grantora.config import Settings, get_settings
 from grantora.db import Database
 from grantora.logging import configure_logging
+
+
+def create_apisix_admin_client(settings: Settings) -> ApisixAdminClient:
+    return ApisixAdminClient(
+        settings.apisix_admin_url,
+        settings.apisix_admin_key,
+        timeout_seconds=settings.apisix_admin_timeout_seconds,
+    )
 
 
 def create_app(settings: Settings | None = None, database: Database | None = None) -> FastAPI:
@@ -44,6 +53,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
     app.state.settings = resolved_settings
     app.state.database = resolved_database
     app.state.adapters = AdapterRegistry()
+    app.state.apisix_client_factory = create_apisix_admin_client
     app.add_exception_handler(GrantoraAPIError, grantora_api_error_handler)
     app.include_router(health_router)
     app.include_router(runtime_router)

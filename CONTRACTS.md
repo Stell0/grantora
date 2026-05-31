@@ -168,6 +168,72 @@ Optional query parameters:
 
 - `workspace_id`: filter agents to one workspace.
 
+### POST /v1/admin/apisix/sync
+
+Reconciles PostgreSQL APISIX route desired state to the APISIX Admin API.
+
+Success response:
+
+```json
+{
+  "request_id": "req_01j...",
+  "status": "ok",
+  "last_started_at": null,
+  "last_finished_at": null,
+  "checked_routes": 1,
+  "changed_routes": 1,
+  "error": null
+}
+```
+
+Safe sync failure response:
+
+```json
+{
+  "request_id": "req_01j...",
+  "status": "error",
+  "last_started_at": null,
+  "last_finished_at": null,
+  "checked_routes": 1,
+  "changed_routes": 0,
+  "error": {
+    "code": "apisix_admin_unavailable",
+    "message": "APISIX Admin API is unavailable"
+  }
+}
+```
+
+Rules:
+
+- Authenticate the admin bootstrap token.
+- Seed the default `gateway-runtime` desired route when absent.
+- Compare current APISIX route state before writing.
+- Running sync twice without desired-state changes must not perform a second APISIX update.
+- Responses must not include the APISIX Admin URL, API key, upstream response body or stack trace.
+
+### GET /v1/admin/apisix/status
+
+Returns the last APISIX sync status, or `never_run` when no sync has been attempted.
+
+Response fields:
+
+```json
+{
+  "status": "never_run | ok | error",
+  "last_started_at": "datetime | null",
+  "last_finished_at": "datetime | null",
+  "checked_routes": 0,
+  "changed_routes": 0,
+  "error": null
+}
+```
+
+Rules:
+
+- Authenticate the admin bootstrap token.
+- Return only stable error codes and safe messages.
+- Do not expose APISIX Admin URL, API key, internal URLs, raw response bodies or stack traces.
+
 ## Standard Error Response
 
 ```json
@@ -347,6 +413,32 @@ ON capabilities (workspace_id, status);
 ## APISIX Route Contract
 
 Desired APISIX route state is stored in PostgreSQL and reconciled through the APISIX Admin API.
+
+`apisix_routes` fields:
+
+```yaml
+id: string
+name: string
+uri: string
+upstream: object
+plugins: object
+status: active | disabled
+created_at: datetime
+updated_at: datetime
+```
+
+`apisix_sync_status` fields:
+
+```yaml
+id: default
+status: ok | error
+last_started_at: datetime | null
+last_finished_at: datetime | null
+checked_routes: integer
+changed_routes: integer
+error_code: string | null
+safe_message: string | null
+```
 
 ```yaml
 id: gateway-runtime
