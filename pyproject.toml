@@ -40,6 +40,10 @@ packages = ["src/grantora"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+  "integration: tests that require PostgreSQL or APISIX test infrastructure",
+  "e2e: tests that require a running Grantora stack through APISIX",
+]
 
 [tool.ruff]
 line-length = 100

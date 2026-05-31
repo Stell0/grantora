@@ -8,6 +8,9 @@ Expected project commands once the skeleton exists:
 
 ```bash
 make test
+make test-unit
+make test-integration
+make test-e2e
 make lint
 make format
 make demo-seed
@@ -17,6 +20,10 @@ make smoke
 Until the Makefile exists, use direct tool commands such as `pytest`, `ruff check`, `ruff format --check` and `alembic upgrade head`.
 
 `make demo-seed` and `make smoke` require local compose services plus `.env` values for the admin bootstrap token, token hash, token pepper and secret encryption key.
+
+`make test-integration` loads `.env` and runs `tests/integration/`. Tests skip when `GRANTORA_INTEGRATION_DATABASE_URL` or `GRANTORA_INTEGRATION_APISIX_ADMIN_URL` is absent. If those variables are set, unavailable PostgreSQL or APISIX services are test failures.
+
+`make test-e2e` loads `.env` and runs `tests/e2e/`. Tests skip unless `GRANTORA_RUN_E2E=1` and `ADMIN_BOOTSTRAP_TOKEN` are set. Once enabled, the suite expects the direct API and APISIX public URL to be reachable and fails on infrastructure errors.
 
 ## Unit Tests
 
@@ -50,6 +57,16 @@ Required areas:
 - Metrics endpoint exposure
 - APISIX Admin API route reconciliation
 
+Current integration environment variables:
+
+```text
+GRANTORA_INTEGRATION_DATABASE_URL=postgresql+psycopg://grantora:grantora@localhost:5432/grantora
+GRANTORA_INTEGRATION_APISIX_ADMIN_URL=http://localhost:9180
+GRANTORA_INTEGRATION_APISIX_ADMIN_KEY=$APISIX_ADMIN_KEY
+```
+
+The PostgreSQL fixture uses a temporary schema inside the configured database and drops that schema after each test.
+
 ## End-To-End Tests
 
 Required flows:
@@ -64,6 +81,15 @@ Required flows:
 - Audit event is created for every invocation attempt.
 - Usage event is created for success, denied and error outcomes.
 - APISIX route reconciliation is idempotent.
+
+Current e2e environment variables:
+
+```text
+GRANTORA_RUN_E2E=1
+ADMIN_BOOTSTRAP_TOKEN=<plaintext bootstrap token for local operator commands>
+GRANTORA_E2E_API_URL=http://localhost:8080
+GRANTORA_E2E_RUNTIME_URL=http://localhost:9080
+```
 
 ## Security Regression Matrix
 

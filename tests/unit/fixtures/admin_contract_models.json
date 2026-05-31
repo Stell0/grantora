@@ -1,0 +1,124 @@
+{
+  "response_models": {
+    "AdminAgentCreateResponse": [
+      "agent",
+      "token"
+    ],
+    "AdminAgentListResponse": [
+      "agents",
+      "limit",
+      "offset"
+    ],
+    "AdminAgentResponse": [
+      "agent"
+    ],
+    "AdminApisixStatusResponse": [
+      "changed_routes",
+      "checked_routes",
+      "error",
+      "last_finished_at",
+      "last_started_at",
+      "status"
+    ],
+    "AdminApisixSyncResponse": [
+      "changed_routes",
+      "checked_routes",
+      "error",
+      "last_finished_at",
+      "last_started_at",
+      "request_id",
+      "status"
+    ],
+    "AdminApplicationListResponse": [
+      "applications",
+      "limit",
+      "offset"
+    ],
+    "AdminApplicationResponse": [
+      "application"
+    ],
+    "AdminAuditListResponse": [
+      "audit",
+      "limit",
+      "offset"
+    ],
+    "AdminBindingListResponse": [
+      "bindings",
+      "limit",
+      "offset"
+    ],
+    "AdminBindingResponse": [
+      "binding"
+    ],
+    "AdminCapabilityListResponse": [
+      "capabilities",
+      "limit",
+      "offset"
+    ],
+    "AdminCapabilityResponse": [
+      "capability"
+    ],
+    "AdminPermissionListResponse": [
+      "limit",
+      "offset",
+      "permissions"
+    ],
+    "AdminPermissionResponse": [
+      "permission"
+    ],
+    "AdminRoleListResponse": [
+      "limit",
+      "offset",
+      "roles"
+    ],
+    "AdminRoleResponse": [
+      "role"
+    ],
+    "AdminSecretListResponse": [
+      "limit",
+      "offset",
+      "secrets"
+    ],
+    "AdminSecretResponse": [
+      "secret"
+    ],
+    "AdminSecretRotationResponse": [
+      "revoked_secret",
+      "secret"
+    ],
+    "AdminUsageListResponse": [
+      "limit",
+      "offset",
+      "summaries",
+      "usage"
+    ],
+    "AdminUserListResponse": [
+      "limit",
+      "offset",
+      "users"
+    ],
+    "AdminUserResponse": [
+      "user"
+    ],
+    "AdminWorkspaceListResponse": [
+      "limit",
+      "offset",
+      "workspaces"
+    ],
+    "AdminWorkspaceResponse": [
+      "workspace"
+    ]
+  },
+  "standard_error_response": {
+    "body_keys": [
+      "error",
+      "request_id",
+      "status"
+    ],
+    "error_keys": [
+      "code",
+      "message"
+    ],
+    "status": "error"
+  }
+}

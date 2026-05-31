@@ -36,7 +36,7 @@ Assessed on 2026-05-31 against `src/grantora/`, `tests/unit/`, `CONTRACTS.md`, `
 ### Confirmed Gaps
 
 - [x] `GET /v1/usage/me` is contracted in `STRUCTURE.md` and `CONTRACTS.md` and implemented for authenticated agent scope. Test: runtime usage summary tests for authenticated agent scope.
-- [ ] There are no `tests/integration/` or `tests/e2e/` flows yet. Test: add PostgreSQL, APISIX and full-through-APISIX suites.
+- [x] `tests/integration/` and `tests/e2e/` flows cover PostgreSQL, APISIX and full-through-APISIX suites. Test: env-gated integration/e2e tiers skip when infrastructure variables are absent and fail when configured infrastructure is broken.
 - [ ] Compose exposes settings such as `MIGRATIONS_AUTO_RUN`, `APISIX_SYNC_ENABLED`, `APISIX_SYNC_INTERVAL_SECONDS`, `APISIX_FAIL_CLOSED`, retention values and feature flags that are not fully wired in code. Test: settings contract tests document which variables are active and which are reserved.
 - [x] The Docker image runs Alembic migrations before Uvicorn when `MIGRATIONS_AUTO_RUN=true`. Test: entrypoint tests cover enabled, disabled and invalid values.
 - [ ] `.env.example` contains future variables not present in `Settings`. Test: environment reference test or docs check keeps `.env.example`, `Settings` and this plan aligned.
@@ -107,14 +107,14 @@ Goal: let a human bring up a useful demo without touching the database manually.
 
 Goal: prove the product works with real infrastructure, not only SQLite and in-memory fakes.
 
-- [ ] Create `tests/integration/` for PostgreSQL session lifecycle and Alembic upgrade from empty database to head. Test: runs against compose PostgreSQL or a disposable test database.
-- [ ] Add integration tests for Admin API object creation and runtime invocation with real PostgreSQL records. Test: curl-equivalent setup produces a successful mock adapter invocation.
-- [ ] Add APISIX integration tests against local APISIX Admin API. Test: create/update/read route and verify idempotent reconciliation.
-- [ ] Add `tests/e2e/` flow through APISIX public port. Test: agent discovers capabilities and invokes allowed capability via `http://localhost:9080`.
-- [ ] Add e2e denial scenarios: no binding, wrong user, disabled capability, missing secret and upstream adapter error. Test: audit and usage records exist for every attempt.
-- [ ] Add contract fixture tests for all Admin API responses and error shapes. Test: fixture update is required for intentional changes.
-- [ ] Add CI commands for unit, integration and e2e tiers with clear skip behavior when Docker is unavailable. Test: CI fails on unmarked integration dependency failures.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] Create `tests/integration/` for PostgreSQL session lifecycle and Alembic upgrade from empty database to head. Test: runs against compose PostgreSQL or a disposable test database.
+- [x] Add integration tests for Admin API object creation and runtime invocation with real PostgreSQL records. Test: curl-equivalent setup produces a successful mock adapter invocation.
+- [x] Add APISIX integration tests against local APISIX Admin API. Test: create/update/read route and verify idempotent reconciliation.
+- [x] Add `tests/e2e/` flow through APISIX public port. Test: agent discovers capabilities and invokes allowed capability via `http://localhost:9080`.
+- [x] Add e2e denial scenarios: no binding, wrong user, disabled capability, missing secret and upstream adapter error. Test: audit and usage records exist for every attempt.
+- [x] Add contract fixture tests for all Admin API responses and error shapes. Test: fixture update is required for intentional changes.
+- [x] Add CI commands for unit, integration and e2e tiers with clear skip behavior when Docker is unavailable. Test: CI fails on unmarked integration dependency failures.
+- [x] output git commands to add files and commit changes using a conventional commit
 
 ## Milestone 12 - Adapter Expansion And Provider Readiness
 
@@ -241,7 +241,7 @@ These variables are read by the current `Settings` class or the current compose 
 | `DATABASE_URL` | SQLAlchemy database URL | `postgresql+psycopg://grantora:grantora@postgres:5432/grantora` | Required outside local defaults. |
 | `DATABASE_POOL_SIZE` | SQLAlchemy pool size | `10` | PostgreSQL only. |
 | `DATABASE_MAX_OVERFLOW` | SQLAlchemy max overflow connections | `20` | PostgreSQL only. |
-| `MIGRATIONS_AUTO_RUN` | Intended migration auto-run switch | `true` | Present in settings, but current container entrypoint does not run migrations. |
+| `MIGRATIONS_AUTO_RUN` | Container migration auto-run switch | `true` | When true, the API entrypoint runs `alembic upgrade head` before Uvicorn. |
 | `POSTGRES_DB` | Local compose database name | `grantora` | Compose-only. |
 | `POSTGRES_USER` | Local compose database user | `grantora` | Compose-only. |
 | `POSTGRES_PASSWORD` | Local compose database password | `grantora` | Compose-only; change for non-disposable environments. |

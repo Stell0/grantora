@@ -1,7 +1,25 @@
-.PHONY: test lint format format-check migrate demo-seed smoke dev-up dev-down
+.PHONY: test test-unit test-integration test-e2e test-all lint format format-check migrate demo-seed smoke dev-up dev-down
 
 test:
 	pytest
+
+test-unit:
+	pytest tests/unit
+
+test-integration:
+	@set -a; \
+	[ ! -f .env ] || . ./.env; \
+	set +a; \
+	pytest tests/integration -m integration
+
+test-e2e:
+	@set -a; \
+	[ ! -f .env ] || . ./.env; \
+	set +a; \
+	pytest tests/e2e -m e2e
+
+test-all:
+	pytest tests/unit tests/integration tests/e2e
 
 lint:
 	ruff check .

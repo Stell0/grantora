@@ -28,6 +28,16 @@ The compose file starts `grantora-api`, `postgres`, `apisix` and `apisix-etcd`. 
 
 `make demo-seed` uses only supported Admin APIs to create or reuse a demo workspace, mock application, user, capability, role, binding, secret and agent. It writes the one-time agent token and demo ids to `.grantora-demo.env`, which is ignored by git. `make smoke` loads `.env` and `.grantora-demo.env`, checks health and readiness, syncs APISIX, discovers the demo capability through APISIX and invokes the mock phonebook capability.
 
+Test tiers:
+
+```bash
+make test-unit
+make test-integration
+make test-e2e
+```
+
+Integration and e2e tests skip unless the documented `GRANTORA_INTEGRATION_*` or `GRANTORA_RUN_E2E=1` environment variables are set.
+
 Useful local URLs:
 
 - Grantora API: `http://localhost:8080/healthz`

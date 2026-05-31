@@ -106,6 +106,36 @@ The command writes demo ids and the one-time agent token returned by agent creat
 - `GET /v1/capabilities?user=alice` through APISIX
 - `POST /v1/invoke/mock.phonebook.search` through APISIX
 
+## Integration And E2E Validation
+
+Run unit tests without external services:
+
+```bash
+make test-unit
+```
+
+Run PostgreSQL and APISIX integration tests against local compose services or another disposable environment:
+
+```bash
+export GRANTORA_INTEGRATION_DATABASE_URL='postgresql+psycopg://grantora:grantora@localhost:5432/grantora'
+export GRANTORA_INTEGRATION_APISIX_ADMIN_URL='http://localhost:9180'
+export GRANTORA_INTEGRATION_APISIX_ADMIN_KEY="$APISIX_ADMIN_KEY"
+make test-integration
+```
+
+The PostgreSQL integration fixture creates a temporary schema and drops it after the test, so it does not reset the whole database. If the integration variables are absent, the tests skip; if they are set but PostgreSQL or APISIX is unavailable, the tests fail.
+
+Run e2e tests through APISIX after the compose stack is up and the admin bootstrap token is available:
+
+```bash
+export GRANTORA_RUN_E2E=1
+export GRANTORA_E2E_API_URL='http://localhost:8080'
+export GRANTORA_E2E_RUNTIME_URL='http://localhost:9080'
+make test-e2e
+```
+
+The e2e suite seeds a unique demo workspace through Admin APIs, syncs APISIX, verifies discovery and invocation through `http://localhost:9080`, and checks that denied, missing-secret and upstream-error attempts have audit and usage records.
+
 ## APISIX Bootstrap
 
 Grantora stores desired APISIX routes in PostgreSQL and reconciles them through the APISIX Admin API.
