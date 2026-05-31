@@ -1,0 +1,396 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+from dataclasses import dataclass
+
+import pytest
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session, sessionmaker, undefer
+
+from grantora.db.models import (
+    ACTIVE_STATUS,
+    REVOKED_STATUS,
+    Agent,
+    ApplicationInstance,
+    AuditEvent,
+    Base,
+    Binding,
+    Capability,
+    Permission,
+    Role,
+    RolePermission,
+    Secret,
+    UsageEvent,
+    User,
+    Workspace,
+)
+from grantora.db.queries import (
+    get_active_agent_by_token_hash,
+    get_active_application_instance_by_slug,
+    get_active_binding,
+    get_active_capability_by_id,
+    get_active_user_by_external_id,
+    get_active_workspace_by_id,
+    get_active_workspace_by_slug,
+    role_grants_permission,
+)
+from grantora.secrets import SecretCipher
+
+
+@pytest.fixture()
+def session() -> Iterator[Session]:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+    with session_factory() as database_session:
+        yield database_session
+
+    Base.metadata.drop_all(engine)
+    engine.dispose()
+
+
+@dataclass(frozen=True)
+class CoreRecords:
+    workspace: Workspace
+    application: ApplicationInstance
+    agent: Agent
+    user: User
+    capability: Capability
+    role: Role
+    binding: Binding
+
+
+def test_workspace_can_be_created_read_and_filtered_by_active_status(session: Session) -> None:
+    active_workspace = Workspace(slug="acme", display_name="Acme SRL")
+    disabled_workspace = Workspace(
+        slug="disabled-acme",
+        display_name="Disabled Acme",
+        status="disabled",
+    )
+
+    session.add_all([active_workspace, disabled_workspace])
+    session.commit()
+
+    assert get_active_workspace_by_slug(session, "acme") == active_workspace
+    assert get_active_workspace_by_id(session, active_workspace.id) == active_workspace
+    assert get_active_workspace_by_slug(session, "disabled-acme") is None
+
+
+def test_application_instance_lookup_uses_workspace_and_slug(session: Session) -> None:
+    records = add_core_records(session)
+    other_workspace = Workspace(slug="other", display_name="Other")
+    same_slug_elsewhere = ApplicationInstance(
+        workspace=other_workspace,
+        slug=records.application.slug,
+        display_name="Other NethVoice",
+        provider_type="nethvoice",
+        base_url="https://voice.other.test",
+    )
+    disabled_application = ApplicationInstance(
+        workspace=records.workspace,
+        slug="disabled-voice",
+        display_name="Disabled Voice",
+        provider_type="nethvoice",
+        status="disabled",
+    )
+    session.add_all([other_workspace, same_slug_elsewhere, disabled_application])
+    session.commit()
+
+    assert (
+        get_active_application_instance_by_slug(session, records.workspace.id, "nethvoice")
+        == records.application
+    )
+    assert (
+        get_active_application_instance_by_slug(session, records.workspace.id, "disabled-voice")
+        is None
+    )
+    assert (
+        get_active_application_instance_by_slug(session, other_workspace.id, "nethvoice")
+        == same_slug_elsewhere
+    )
+
+
+def test_active_agent_lookup_uses_token_hash_path(session: Session) -> None:
+    records = add_core_records(session)
+    disabled_agent = Agent(
+        workspace=records.workspace,
+        slug="disabled-agent",
+        display_name="Disabled Agent",
+        token_hash="sha256:disabled",
+        token_hash_algorithm="sha256",
+        status="disabled",
+    )
+    session.add(disabled_agent)
+    session.commit()
+
+    assert get_active_agent_by_token_hash(session, "sha256:agent") == records.agent
+    assert get_active_agent_by_token_hash(session, "sha256:disabled") is None
+
+
+def test_user_lookup_uses_workspace_external_id_and_active_status(session: Session) -> None:
+    records = add_core_records(session)
+    disabled_user = User(
+        workspace=records.workspace,
+        external_id="disabled-alice",
+        display_name="Disabled Alice",
+        status="disabled",
+    )
+    session.add(disabled_user)
+    session.commit()
+
+    assert get_active_user_by_external_id(session, records.workspace.id, "alice") == records.user
+    assert get_active_user_by_external_id(session, records.workspace.id, "disabled-alice") is None
+
+
+def test_active_capability_lookup_uses_id_and_workspace(session: Session) -> None:
+    records = add_core_records(session)
+    disabled_capability = Capability(
+        id="nethvoice.phonebook.disabled",
+        workspace=records.workspace,
+        application_instance=records.application,
+        name="Disabled phonebook",
+        provider_type="nethvoice",
+        adapter="nethvoice",
+        operation="phonebook.disabled",
+        auth_mode="user",
+        risk_class="read_only",
+        input_schema={"type": "object"},
+        output_schema={"type": "object"},
+        status="disabled",
+    )
+    session.add(disabled_capability)
+    session.commit()
+
+    assert (
+        get_active_capability_by_id(
+            session,
+            records.workspace.id,
+            "nethvoice.phonebook.search",
+        )
+        == records.capability
+    )
+    assert (
+        get_active_capability_by_id(session, records.workspace.id, disabled_capability.id) is None
+    )
+
+
+def test_role_permission_lookup_grants_expected_runtime_permission(session: Session) -> None:
+    records = add_core_records(session)
+
+    assert role_grants_permission(session, records.role.id, "capability.invoke.read_only") is True
+    assert (
+        role_grants_permission(session, records.role.id, "capability.invoke.destructive") is False
+    )
+
+
+def test_binding_lookup_uses_workspace_agent_user_capability_and_status(session: Session) -> None:
+    records = add_core_records(session)
+    disabled_binding = Binding(
+        workspace=records.workspace,
+        agent=records.agent,
+        user=records.user,
+        capability=records.capability,
+        role=records.role,
+        status="disabled",
+    )
+    session.add(disabled_binding)
+    session.commit()
+
+    assert (
+        get_active_binding(
+            session,
+            records.workspace.id,
+            records.agent.id,
+            records.user.id,
+            records.capability.id,
+        )
+        == records.binding
+    )
+    assert (
+        get_active_binding(
+            session, records.workspace.id, records.agent.id, records.user.id, "missing"
+        )
+        is None
+    )
+
+
+def test_secret_value_is_encrypted_and_deferred_from_default_queries(session: Session) -> None:
+    records = add_core_records(session)
+    cipher = SecretCipher(SecretCipher.generate_key())
+    plaintext = "nethvoice-token"
+    encrypted_value = cipher.encrypt(plaintext)
+    secret = Secret(
+        workspace=records.workspace,
+        application_instance=records.application,
+        owner_type="user",
+        owner_id=records.user.id,
+        secret_type="bearer_token",
+        encrypted_value=encrypted_value,
+        status=ACTIVE_STATUS,
+    )
+    revoked_secret = Secret(
+        workspace=records.workspace,
+        application_instance=records.application,
+        owner_type="agent",
+        owner_id=records.agent.id,
+        secret_type="api_key",
+        encrypted_value=cipher.encrypt("revoked-token"),
+        status=REVOKED_STATUS,
+    )
+    session.add_all([secret, revoked_secret])
+    session.commit()
+
+    secret_id = secret.id
+    session.expunge_all()
+
+    loaded_secret = session.scalar(select(Secret).where(Secret.id == secret_id))
+
+    assert loaded_secret is not None
+    assert "encrypted_value" not in loaded_secret.__dict__
+    assert encrypted_value != plaintext
+
+    session.expunge_all()
+    loaded_with_value = session.scalar(
+        select(Secret).options(undefer(Secret.encrypted_value)).where(Secret.id == secret_id)
+    )
+
+    assert loaded_with_value is not None
+    assert loaded_with_value.encrypted_value == encrypted_value
+    assert cipher.decrypt(loaded_with_value.encrypted_value) == plaintext
+
+
+def test_audit_and_usage_events_can_record_decisions_and_statuses(session: Session) -> None:
+    records = add_core_records(session)
+    session.add_all(
+        [
+            AuditEvent(
+                request_id="req_denied",
+                workspace=records.workspace,
+                agent=records.agent,
+                user=records.user,
+                capability_id=records.capability.id,
+                application_instance=records.application,
+                decision="deny",
+                outcome="error",
+                error_code="capability_denied",
+                latency_ms=4,
+                remote_addr="127.0.0.1",
+            ),
+            AuditEvent(
+                request_id="req_success",
+                workspace=records.workspace,
+                agent=records.agent,
+                user=records.user,
+                capability_id=records.capability.id,
+                application_instance=records.application,
+                decision="allow",
+                outcome="success",
+                latency_ms=9,
+            ),
+            UsageEvent(
+                workspace=records.workspace,
+                agent=records.agent,
+                user=records.user,
+                capability_id=records.capability.id,
+                application_instance=records.application,
+                status="success",
+                latency_ms=9,
+            ),
+            UsageEvent(
+                workspace=records.workspace,
+                agent=records.agent,
+                user=records.user,
+                capability_id=records.capability.id,
+                status="denied",
+                latency_ms=4,
+            ),
+            UsageEvent(
+                workspace=records.workspace,
+                agent=records.agent,
+                user=records.user,
+                capability_id=records.capability.id,
+                status="error",
+                latency_ms=12,
+            ),
+        ]
+    )
+    session.commit()
+
+    audit_decisions = set(session.scalars(select(AuditEvent.decision)).all())
+    usage_statuses = set(session.scalars(select(UsageEvent.status)).all())
+
+    assert audit_decisions == {"allow", "deny"}
+    assert usage_statuses == {"success", "denied", "error"}
+
+
+def add_core_records(session: Session) -> CoreRecords:
+    workspace = Workspace(slug="acme", display_name="Acme SRL")
+    application = ApplicationInstance(
+        workspace=workspace,
+        slug="nethvoice",
+        display_name="NethVoice",
+        provider_type="nethvoice",
+        base_url="https://voice.example.test",
+    )
+    agent = Agent(
+        workspace=workspace,
+        slug="hermes-alice",
+        display_name="Hermes Alice",
+        token_hash="sha256:agent",
+        token_hash_algorithm="sha256",
+    )
+    user = User(workspace=workspace, external_id="alice", display_name="Alice")
+    capability = Capability(
+        id="nethvoice.phonebook.search",
+        workspace=workspace,
+        application_instance=application,
+        name="Search phonebook",
+        provider_type="nethvoice",
+        adapter="nethvoice",
+        operation="phonebook.search",
+        auth_mode="user",
+        risk_class="read_only",
+        input_schema={
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        },
+        output_schema={"type": "object", "properties": {"contacts": {"type": "array"}}},
+    )
+    role = Role(workspace=workspace, slug="phonebook-reader", display_name="Phonebook reader")
+    permission = Permission(
+        code="capability.invoke.read_only",
+        description="Invoke read-only capabilities",
+    )
+    role_permission = RolePermission(role=role, permission=permission)
+    binding = Binding(
+        workspace=workspace,
+        agent=agent,
+        user=user,
+        capability=capability,
+        role=role,
+    )
+    session.add_all(
+        [
+            workspace,
+            application,
+            agent,
+            user,
+            capability,
+            role,
+            permission,
+            role_permission,
+            binding,
+        ]
+    )
+    session.commit()
+    return CoreRecords(
+        workspace=workspace,
+        application=application,
+        agent=agent,
+        user=user,
+        capability=capability,
+        role=role,
+        binding=binding,
+    )

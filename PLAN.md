@@ -13,16 +13,17 @@ This roadmap is the working build order for Grantora. Keep checkboxes current an
 
 ## Milestone 1 - Core Data Model
 
-- [ ] Add workspace model. Test: create, read and active-status query.
-- [ ] Add application instance model. Test: lookup by workspace and slug.
-- [ ] Add agent model with token hash fields. Test: active agent lookup by token hash path.
-- [ ] Add user model. Test: lookup by workspace and external id.
-- [ ] Add capability model with JSONB input and output schemas. Test: active capability lookup by id and workspace.
-- [ ] Add role and permission models. Test: role grants expected runtime permission.
-- [ ] Add binding model. Test: binding lookup uses workspace, agent, user, capability and status.
-- [ ] Add secret metadata and encrypted value model. Test: secret is stored encrypted and not returned by default queries.
-- [ ] Add audit event model. Test: denied and successful decisions can be recorded.
-- [ ] Add usage event model. Test: successful, denied and error status events can be recorded.
+- [x] Add workspace model. Test: create, read and active-status query.
+- [x] Add application instance model. Test: lookup by workspace and slug.
+- [x] Add agent model with token hash fields. Test: active agent lookup by token hash path.
+- [x] Add user model. Test: lookup by workspace and external id.
+- [x] Add capability model with JSONB input and output schemas. Test: active capability lookup by id and workspace.
+- [x] Add role and permission models. Test: role grants expected runtime permission.
+- [x] Add binding model. Test: binding lookup uses workspace, agent, user, capability and status.
+- [x] Add secret metadata and encrypted value model. Test: secret is stored encrypted and not returned by default queries.
+- [x] Add audit event model. Test: denied and successful decisions can be recorded.
+- [x] Add usage event model. Test: successful, denied and error status events can be recorded.
+- [x] output git commands to add files and commit changes using a conventional commit 
 
 ## Milestone 2 - Agent Authentication
 
@@ -31,6 +32,7 @@ This roadmap is the working build order for Grantora. Keep checkboxes current an
 - [ ] Authenticate `Authorization: Bearer` runtime requests. Test: missing, invalid, disabled and valid agents produce expected results.
 - [ ] Add `/v1/me`. Test: authenticated agent receives workspace and agent metadata without secrets.
 - [ ] Implement admin bootstrap authentication. Test: invalid admin token is denied and valid token can reach admin endpoints.
+- [ ] output git commands to add files and commit changes using a conventional commit 
 
 ## Milestone 3 - Capability Invocation
 
@@ -41,6 +43,7 @@ This roadmap is the working build order for Grantora. Keep checkboxes current an
 - [ ] Resolve secrets according to the lookup order. Test: missing secret fails closed.
 - [ ] Write audit events for allow and deny decisions. Test: denied request is audited.
 - [ ] Write usage events for success, denied and error outcomes. Test: usage record includes workspace, agent, user, capability and latency.
+- [ ] output git commands to add files and commit changes using a conventional commit 
 
 ## Milestone 4 - APISIX Integration
 
@@ -49,6 +52,7 @@ This roadmap is the working build order for Grantora. Keep checkboxes current an
 - [ ] Implement idempotent route reconciliation. Test: running sync twice produces no second change.
 - [ ] Add baseline plugins for request IDs, Prometheus and rate limiting. Test: reconciled route contains required plugin config.
 - [ ] Add `/v1/admin/apisix/sync` and `/v1/admin/apisix/status`. Test: admin endpoint reports last sync status safely.
+- [ ] output git commands to add files and commit changes using a conventional commit 
 
 ## Milestone 5 - First Adapter
 
@@ -56,6 +60,7 @@ This roadmap is the working build order for Grantora. Keep checkboxes current an
 - [ ] Add NethVoice phonebook adapter. Test: mock upstream response normalizes to the contact output schema.
 - [ ] Enforce result limit and safe field selection. Test: oversized upstream result is trimmed and sensitive fields are excluded.
 - [ ] Normalize upstream errors. Test: 401, 404, timeout and 5xx map to safe Grantora error codes.
+- [ ] output git commands to add files and commit changes using a conventional commit 
 
 ## Milestone 6 - MCP/OpenAPI Tool Description
 
@@ -63,6 +68,7 @@ This roadmap is the working build order for Grantora. Keep checkboxes current an
 - [ ] Add filtered capability OpenAPI. Test: agent/user pair sees only allowed capabilities.
 - [ ] Add MCP-compatible tool list generator. Test: generated tool names are stable and map back to capability ids.
 - [ ] Add contract tests for schema stability. Test: intentional API changes require fixture updates.
+- [ ] output git commands to add files and commit changes using a conventional commit 
 
 ## Milestone 7 - Observability And Hardening
 
@@ -71,3 +77,4 @@ This roadmap is the working build order for Grantora. Keep checkboxes current an
 - [ ] Add secret rotation behavior. Test: revoked secret is not selected for invocation.
 - [ ] Add timeout and payload size enforcement. Test: slow and oversized upstream responses fail safely.
 - [ ] Document backup and restore procedure. Test: restore into a clean local environment recreates Grantora dynamic state.
+- [ ] output git commands to add files and commit changes using a conventional commit 

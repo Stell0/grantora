@@ -37,4 +37,4 @@ Useful local URLs:
 
 ## Development Status
 
-Status: Milestone 0 repository skeleton. The next implementation step is Milestone 1 in [PLAN.md](PLAN.md): create the core Grantora data model and first migrations.
+Status: Milestone 1 core data model implemented. The next implementation step is Milestone 2 in [PLAN.md](PLAN.md): agent authentication.

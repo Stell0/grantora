@@ -14,6 +14,7 @@ authors = [
 ]
 dependencies = [
   "alembic>=1.13,<2.0",
+  "cryptography>=42.0,<45.0",
   "fastapi>=0.115,<1.0",
   "httpx>=0.27,<1.0",
   "prometheus-client>=0.20,<1.0",
