@@ -6,6 +6,8 @@ This file defines the contracts implementation must follow. Update it before cha
 
 All runtime endpoints require `Authorization: Bearer <agent_token>` unless explicitly documented otherwise.
 
+Agent bearer tokens are looked up by the stored `hmac-sha256:<hex>` hash. The plaintext token is returned only by the admin creation response and is never returned by runtime APIs.
+
 ### GET /v1/me
 
 Returns the authenticated agent context.
@@ -101,6 +103,8 @@ Returns usage summary for the authenticated agent. It must not expose other agen
 
 Admin endpoints require admin authentication. The MVP uses an admin bootstrap token hash from environment configuration.
 
+Admin clients authenticate with `Authorization: Bearer <admin_bootstrap_token>`. Grantora verifies this token against `ADMIN_BOOTSTRAP_TOKEN_HASH` using the same peppered token hash format as agent tokens.
+
 Required endpoints:
 
 - `POST /v1/admin/workspaces`
@@ -120,6 +124,49 @@ Required endpoints:
 - `GET /v1/admin/apisix/status`
 
 Admin `POST` endpoints must validate workspace ownership and write audit records for security-relevant changes.
+
+### POST /v1/admin/agents
+
+Creates an agent in an active workspace and returns its bearer token exactly once.
+
+Request body:
+
+```json
+{
+  "workspace_id": "uuid",
+  "slug": "hermes-alice",
+  "display_name": "Hermes Alice"
+}
+```
+
+Success response:
+
+```json
+{
+  "agent": {
+    "id": "uuid",
+    "workspace_id": "uuid",
+    "slug": "hermes-alice",
+    "display_name": "Hermes Alice",
+    "status": "active"
+  },
+  "token": "grt_agent_..."
+}
+```
+
+Rules:
+
+- Store only `token_hash` and `token_hash_algorithm` on the agent record.
+- Do not return `token`, `token_hash` or `token_hash_algorithm` from list or runtime responses.
+- Creating an agent in a missing or disabled workspace fails safely.
+
+### GET /v1/admin/agents
+
+Returns agent metadata for admin inspection. It never returns plaintext tokens or token hashes.
+
+Optional query parameters:
+
+- `workspace_id`: filter agents to one workspace.
 
 ## Standard Error Response
 

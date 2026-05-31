@@ -37,6 +37,21 @@ class Settings(BaseSettings):
         default="change-me-32-byte-base64-key",
         validation_alias="SECRET_ENCRYPTION_KEY",
     )
+    agent_token_pepper: str = Field(
+        default="change-me-agent-token-pepper",
+        validation_alias=AliasChoices(
+            "GRANTORA_AGENT_TOKEN_PEPPER",
+            "AGENT_TOKEN_PEPPER",
+            "TOKEN_HASH_PEPPER",
+        ),
+    )
+    admin_bootstrap_token_hash: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH",
+            "ADMIN_BOOTSTRAP_TOKEN_HASH",
+        ),
+    )
     metrics_enabled: bool = Field(default=True, validation_alias="METRICS_ENABLED")
     request_id_header: str = Field(default="X-Request-Id", validation_alias="REQUEST_ID_HEADER")
 

@@ -14,10 +14,12 @@ Required groups:
 
 - Core service: environment, bind address, public base URL and logging.
 - Database: PostgreSQL URL, pool size and migration behavior.
-- Security: secret encryption key, token pepper and admin bootstrap token hash.
+- Security: `SECRET_ENCRYPTION_KEY`, `GRANTORA_AGENT_TOKEN_PEPPER` or `AGENT_TOKEN_PEPPER`, and `GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH` or `ADMIN_BOOTSTRAP_TOKEN_HASH`.
 - APISIX: public URL, Admin API URL, Admin API key and sync settings.
 - Observability: metrics, audit retention, usage retention and request id header.
 - Upstream defaults: timeouts, TLS verification and response size limit.
+
+Agent and admin bootstrap token hashes use the `hmac-sha256:<hex>` format. Generate the admin bootstrap hash with the same token pepper that the service will receive at runtime.
 
 ## Local Docker Compose
 

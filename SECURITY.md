@@ -16,12 +16,14 @@ An authenticated agent is not automatically allowed to act for any user. Runtime
 - Agents authenticate with bearer tokens in the MVP.
 - Store only token hashes, never plaintext tokens.
 - Use a configured pepper from environment variables.
+- The MVP hash format is `hmac-sha256:<hex>` using HMAC-SHA-256 over the plaintext token with the configured token pepper.
 - Return generated tokens only once at creation time.
 - Revoking or disabling an agent must deny future requests immediately.
 
 ## Admin Authentication
 
 - MVP admin access uses an environment-provided bootstrap token hash.
+- The bootstrap token hash uses the same `hmac-sha256:<hex>` peppered hash format as agent tokens.
 - Admin endpoints are separate from runtime agent endpoints.
 - Admin changes to security-relevant objects must create audit records.
 - Future OIDC or NS8 integration must preserve the same authorization checks.

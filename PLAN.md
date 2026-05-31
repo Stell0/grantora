@@ -27,12 +27,12 @@ This roadmap is the working build order for Grantora. Keep checkboxes current an
 
 ## Milestone 2 - Agent Authentication
 
-- [ ] Implement agent token creation. Test: generated token is returned only once.
-- [ ] Implement token hashing with pepper. Test: plaintext token is never persisted.
-- [ ] Authenticate `Authorization: Bearer` runtime requests. Test: missing, invalid, disabled and valid agents produce expected results.
-- [ ] Add `/v1/me`. Test: authenticated agent receives workspace and agent metadata without secrets.
-- [ ] Implement admin bootstrap authentication. Test: invalid admin token is denied and valid token can reach admin endpoints.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] Implement agent token creation. Test: generated token is returned only once.
+- [x] Implement token hashing with pepper. Test: plaintext token is never persisted.
+- [x] Authenticate `Authorization: Bearer` runtime requests. Test: missing, invalid, disabled and valid agents produce expected results.
+- [x] Add `/v1/me`. Test: authenticated agent receives workspace and agent metadata without secrets.
+- [x] Implement admin bootstrap authentication. Test: invalid admin token is denied and valid token can reach admin endpoints.
+- [x] output git commands to add files and commit changes using a conventional commit 
 
 ## Milestone 3 - Capability Invocation
 

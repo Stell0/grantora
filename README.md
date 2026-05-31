@@ -37,4 +37,4 @@ Useful local URLs:
 
 ## Development Status
 
-Status: Milestone 1 core data model implemented. The next implementation step is Milestone 2 in [PLAN.md](PLAN.md): agent authentication.
+Status: Milestone 2 agent authentication implemented. The next implementation step is Milestone 3 in [PLAN.md](PLAN.md): capability invocation.
