@@ -38,9 +38,9 @@ Assessed on 2026-05-31 against `src/grantora/`, `tests/unit/`, `CONTRACTS.md`, `
 - [x] `GET /v1/usage/me` is contracted in `STRUCTURE.md` and `CONTRACTS.md` and implemented for authenticated agent scope. Test: runtime usage summary tests for authenticated agent scope.
 - [ ] There are no `tests/integration/` or `tests/e2e/` flows yet. Test: add PostgreSQL, APISIX and full-through-APISIX suites.
 - [ ] Compose exposes settings such as `MIGRATIONS_AUTO_RUN`, `APISIX_SYNC_ENABLED`, `APISIX_SYNC_INTERVAL_SECONDS`, `APISIX_FAIL_CLOSED`, retention values and feature flags that are not fully wired in code. Test: settings contract tests document which variables are active and which are reserved.
-- [ ] The Docker image starts Uvicorn directly and does not run Alembic migrations even when `MIGRATIONS_AUTO_RUN=true`. Test: container startup test or entrypoint test proves the selected migration behavior.
+- [x] The Docker image runs Alembic migrations before Uvicorn when `MIGRATIONS_AUTO_RUN=true`. Test: entrypoint tests cover enabled, disabled and invalid values.
 - [ ] `.env.example` contains future variables not present in `Settings`. Test: environment reference test or docs check keeps `.env.example`, `Settings` and this plan aligned.
-- [ ] The curl-only bootstrap path now has Admin API coverage, but it is not yet packaged as an executable smoke or e2e script through compose and APISIX. Test: the target end-to-end example in this plan becomes an executable e2e test.
+- [x] The bootstrap path is packaged as `make demo-seed` plus `make smoke` through compose and APISIX. Test: workflow and smoke unit tests cover idempotent seeding and failing checks; full compose remains a manual/e2e check.
 - [ ] Only NethVoice phonebook is implemented as a real adapter. Test: each new adapter gets unit normalization/error mapping tests and integration tests with a mock upstream.
 - [ ] MCP tool listing is an internal generator only. Test: expose and verify the final agent-facing MCP transport or endpoint selected for product use.
 - [ ] No production CI, release packaging, image publishing, SBOM, dependency scan or NS8 module packaging is defined yet. Test: release pipeline creates reproducible artifacts and runs all gates.
@@ -77,7 +77,7 @@ Goal: make Grantora fully configurable without direct database inserts.
 - [x] Add `GET /v1/admin/usage` with filters and aggregate summaries by workspace, agent, user, capability and status. Test: denied/success/error usage events aggregate correctly.
 - [x] Record admin audit events for security-relevant changes: agents, roles, bindings, secrets, applications and capabilities. Test: each admin mutation writes a safe audit event with request id and actor type.
 - [x] Add admin response schemas and fixtures for stable contract coverage. Test: intentional API changes require fixture updates.
-- [x] output git commands to add files and commit changes using a conventional commit 
+- [x] output git commands to add files and commit changes using a conventional commit
 
 ## Milestone 9 - Runtime Usage, Lifecycle And Safety
 
@@ -96,12 +96,12 @@ Goal: finish runtime endpoints and lifecycle controls expected by agents and ope
 
 Goal: let a human bring up a useful demo without touching the database manually.
 
-- [ ] Add a documented demo bootstrap command, script or admin API flow for a workspace, application, user, capability, role, binding, secret and agent. Test: clean compose environment can execute the documented flow.
-- [ ] Add `make demo-seed` only if it uses supported APIs or migrations rather than private test helpers. Test: command is idempotent and reports created/reused objects.
-- [ ] Add `make smoke` for health, ready, APISIX sync, runtime discovery and one mock invocation. Test: command exits nonzero on any failed step.
-- [ ] Update `README.md` and `OPERATIONS.md` with the same human flow in this plan. Test: docs command snippets are exercised by e2e or smoke tests.
-- [ ] Make migration behavior explicit: either implement `MIGRATIONS_AUTO_RUN` safely or remove it from active examples. Test: container startup and manual migration tests cover the selected behavior.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] Add a documented demo bootstrap command, script or admin API flow for a workspace, application, user, capability, role, binding, secret and agent. Test: clean compose environment can execute the documented flow.
+- [x] Add `make demo-seed` only if it uses supported APIs or migrations rather than private test helpers. Test: command is idempotent and reports created/reused objects.
+- [x] Add `make smoke` for health, ready, APISIX sync, runtime discovery and one mock invocation. Test: command exits nonzero on any failed step.
+- [x] Update `README.md` and `OPERATIONS.md` with the same human flow in this plan. Test: docs command snippets are exercised by e2e or smoke tests.
+- [x] Make migration behavior explicit: either implement `MIGRATIONS_AUTO_RUN` safely or remove it from active examples. Test: container startup and manual migration tests cover the selected behavior.
+- [x] output git commands to add files and commit changes using a conventional commit
 
 ## Milestone 11 - Integration And End-To-End Test Suites
 
@@ -335,7 +335,7 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-Run migrations explicitly until migration auto-run is implemented or removed:
+The local container runs migrations automatically before Uvicorn when `MIGRATIONS_AUTO_RUN=true`. To run migrations manually instead, set `MIGRATIONS_AUTO_RUN=false` and execute:
 
 ```bash
 docker compose exec grantora-api alembic upgrade head
@@ -364,7 +364,14 @@ curl -sS http://localhost:8080/v1/admin/apisix/status \
 
 ### Target End-To-End Example
 
-This curl-only example is supported by the Milestone 8 Admin API endpoints. A complete scripted compose smoke flow through APISIX remains part of Milestone 10 and Milestone 11.
+This curl-only example is supported by the Milestone 8 Admin API endpoints. Milestone 10 also provides the executable local demo path:
+
+```bash
+make demo-seed
+make smoke
+```
+
+The Make targets use the supported Admin and Runtime APIs and store local demo metadata in `.grantora-demo.env`.
 
 The final flow should work like this from a clean compose environment.
 

@@ -17,10 +17,16 @@ flowchart LR
 
 ```bash
 cp .env.example .env
-docker compose up --build
+# Edit .env with a generated SECRET_ENCRYPTION_KEY, token pepper,
+# ADMIN_BOOTSTRAP_TOKEN and matching GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH.
+docker compose up --build -d
+make demo-seed
+make smoke
 ```
 
-The compose file starts `grantora-api`, `postgres`, `apisix` and `apisix-etcd`. The API container runs the FastAPI app factory from `src/grantora/main.py`.
+The compose file starts `grantora-api`, `postgres`, `apisix` and `apisix-etcd`. When `MIGRATIONS_AUTO_RUN=true`, the API container runs Alembic migrations before starting the FastAPI app factory from `src/grantora/main.py`.
+
+`make demo-seed` uses only supported Admin APIs to create or reuse a demo workspace, mock application, user, capability, role, binding, secret and agent. It writes the one-time agent token and demo ids to `.grantora-demo.env`, which is ignored by git. `make smoke` loads `.env` and `.grantora-demo.env`, checks health and readiness, syncs APISIX, discovers the demo capability through APISIX and invokes the mock phonebook capability.
 
 Useful local URLs:
 
@@ -37,4 +43,4 @@ Useful local URLs:
 
 ## Development Status
 
-Status: Milestone 7 observability and hardening implemented. See [PLAN.md](PLAN.md) for the current roadmap status.
+Status: Milestone 10 bootstrap, seeding and human workflow implemented. See [PLAN.md](PLAN.md) for the current roadmap status.

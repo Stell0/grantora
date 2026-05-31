@@ -65,6 +65,7 @@ src/grantora/
   db/                     SQLAlchemy models, session and persistence helpers
   schemas/                Pydantic request and response models
   openapi/                filtered OpenAPI and future MCP tool descriptions
+  cli/                    local human workflow commands
 ```
 
 ## API Modules

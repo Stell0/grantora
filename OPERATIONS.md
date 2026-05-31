@@ -15,11 +15,12 @@ Required groups:
 - Core service: environment, bind address, public base URL and logging.
 - Database: PostgreSQL URL, pool size and migration behavior.
 - Security: `SECRET_ENCRYPTION_KEY`, `GRANTORA_AGENT_TOKEN_PEPPER` or `AGENT_TOKEN_PEPPER`, and `GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH` or `ADMIN_BOOTSTRAP_TOKEN_HASH`.
+- Local workflow helpers: `ADMIN_BOOTSTRAP_TOKEN`, `GRANTORA_API_URL`, `GRANTORA_RUNTIME_URL` and optional `DEMO_*` values used by `make demo-seed` and `make smoke`.
 - APISIX: public URL, Admin API URL, Admin API key and sync settings.
 - Observability: metrics, audit retention, usage retention and request id header.
 - Upstream defaults: timeouts, TLS verification and response size limit.
 
-Agent and admin bootstrap token hashes use the `hmac-sha256:<hex>` format. Generate the admin bootstrap hash with the same token pepper that the service will receive at runtime.
+Agent and admin bootstrap token hashes use the `hmac-sha256:<hex>` format. Generate the admin bootstrap hash with the same token pepper that the service will receive at runtime. The plaintext `ADMIN_BOOTSTRAP_TOKEN` is for local operator commands only; it is not passed to `grantora-api` by the compose file.
 
 ## Local Docker Compose
 
@@ -50,7 +51,13 @@ Local service names:
 
 ## Database Migrations
 
-Expected commands once the Python skeleton exists:
+The local API container entrypoint runs migrations before Uvicorn when `MIGRATIONS_AUTO_RUN=true`:
+
+```bash
+docker compose up --build -d grantora-api
+```
+
+Disable automatic migrations by setting `MIGRATIONS_AUTO_RUN=false`, then run migrations manually:
 
 ```bash
 alembic upgrade head
@@ -60,9 +67,44 @@ alembic revision --autogenerate -m "describe change"
 Rules:
 
 - Run migrations before starting production traffic.
+- Invalid `MIGRATIONS_AUTO_RUN` values make the container exit before serving traffic.
 - Do not edit applied migration files in shared environments.
 - Include indexes for new lookup paths.
 - Keep migration behavior independent of NS8 internals.
+
+## Demo Bootstrap And Smoke
+
+From a clean local checkout, copy `.env.example`, generate real secret material, start compose, seed the demo and run smoke:
+
+```bash
+cp .env.example .env
+# Edit .env with SECRET_ENCRYPTION_KEY, GRANTORA_AGENT_TOKEN_PEPPER,
+# ADMIN_BOOTSTRAP_TOKEN and GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH.
+docker compose up --build -d
+make demo-seed
+make smoke
+```
+
+`make demo-seed` uses only Admin API endpoints. It creates or reuses:
+
+- workspace `demo`
+- mock application `mock-phonebook`
+- user `alice`
+- capability `mock.phonebook.search`
+- role `phonebook-reader`
+- binding for the demo agent, user, capability and role
+- user-owned upstream secret metadata
+- agent `hermes-demo`
+
+The command writes demo ids and the one-time agent token returned by agent creation to `.grantora-demo.env`. Keep that file local; it is ignored by git. If the file is deleted after the agent already exists, Grantora cannot return the plaintext agent token again, so set `DEMO_AGENT_TOKEN` manually or recreate the disposable demo data.
+
+`make smoke` loads `.env` and `.grantora-demo.env`, then exits nonzero if any step fails:
+
+- `GET /healthz` on the direct API
+- `GET /readyz` on the direct API
+- `POST /v1/admin/apisix/sync` on the direct API
+- `GET /v1/capabilities?user=alice` through APISIX
+- `POST /v1/invoke/mock.phonebook.search` through APISIX
 
 ## APISIX Bootstrap
 

@@ -10,9 +10,13 @@ Expected project commands once the skeleton exists:
 make test
 make lint
 make format
+make demo-seed
+make smoke
 ```
 
 Until the Makefile exists, use direct tool commands such as `pytest`, `ruff check`, `ruff format --check` and `alembic upgrade head`.
+
+`make demo-seed` and `make smoke` require local compose services plus `.env` values for the admin bootstrap token, token hash, token pepper and secret encryption key.
 
 ## Unit Tests
 
