@@ -15,14 +15,73 @@ flowchart LR
 
 ## Run Locally
 
+Copy the example environment and generate real secret material before starting containers:
+
 ```bash
 cp .env.example .env
-# Edit .env with a generated SECRET_ENCRYPTION_KEY, token pepper,
-# ADMIN_BOOTSTRAP_TOKEN and matching GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH.
+python - <<'PY'
+import base64
+import hashlib
+import hmac
+import os
+import secrets
+
+admin_token = "grantora-admin-" + secrets.token_urlsafe(24)
+pepper = secrets.token_urlsafe(24)
+digest = hmac.new(pepper.encode(), admin_token.encode(), hashlib.sha256).hexdigest()
+fernet_key = base64.urlsafe_b64encode(os.urandom(32)).decode()
+
+print(f"SECRET_ENCRYPTION_KEY={fernet_key}")
+print(f"GRANTORA_AGENT_TOKEN_PEPPER={pepper}")
+print(f"ADMIN_BOOTSTRAP_TOKEN={admin_token}")
+print(f"GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH=hmac-sha256:{digest}")
+PY
+# Copy the four generated values into .env.
+```
+
+Start the local stack with either Docker Compose or Podman Compose:
+
+```bash
+# Docker
 docker compose up --build -d
+
+# Podman (requires a compose provider such as podman-compose)
+podman compose up --build -d
+```
+
+The compose files read the canonical `GRANTORA_*` security variables directly. Set `GRANTORA_AGENT_TOKEN_PEPPER` and `GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH` in `.env`; do not rely on legacy alias names such as `AGENT_TOKEN_PEPPER`, `TOKEN_HASH_PEPPER`, or `ADMIN_BOOTSTRAP_TOKEN_HASH` when launching the compose stack.
+
+Then seed the demo and run the documented smoke path:
+
+```bash
 make demo-seed
 make smoke
 make retention RETENTION_FLAGS=--dry-run
+```
+
+`make demo-seed`, `make smoke`, and the other Python-based make targets run on the host checkout, so they require Python 3.12+ and the project dependencies installed locally. On a container-only Podman host, run the same workflow from the built image on the compose network instead:
+
+```bash
+podman run --rm --network grantora \
+  --env-file .env \
+  -e GRANTORA_API_URL=http://grantora-api:8080 \
+  -e GRANTORA_RUNTIME_URL=http://apisix:9080 \
+  -e APISIX_PUBLIC_URL=http://apisix:9080 \
+  -v "$PWD:/work:Z" \
+  -w /work \
+  --entrypoint python \
+  localhost/grantora-run_grantora-api:latest -m grantora.cli.demo_seed
+
+podman run --rm --network grantora \
+  --env-file .env \
+  --env-file .grantora-demo.env \
+  -e GRANTORA_API_URL=http://grantora-api:8080 \
+  -e GRANTORA_RUNTIME_URL=http://apisix:9080 \
+  -e APISIX_PUBLIC_URL=http://apisix:9080 \
+  -v "$PWD:/work:Z" \
+  -w /work \
+  --entrypoint python \
+  localhost/grantora-run_grantora-api:latest -m grantora.cli.smoke
 ```
 
 The compose file starts `grantora-api`, `postgres`, `apisix` and `apisix-etcd`. When `MIGRATIONS_AUTO_RUN=true`, the API container runs Alembic migrations before starting the FastAPI app factory from `src/grantora/main.py`.

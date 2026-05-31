@@ -31,22 +31,36 @@ Grantora rejects oversized JSON requests before route handlers using `MAX_REQUES
 
 ## Local Docker Compose
 
+Grantora's development compose files work with either Docker Compose or Podman Compose. Podman requires a compose provider such as `podman-compose` or the Docker Compose CLI plugin behind `podman compose`.
+
 Start local services:
 
 ```bash
+# Docker
 docker compose up --build
+
+# Podman
+podman compose up --build
 ```
 
 Stop local services:
 
 ```bash
+# Docker
 docker compose down
+
+# Podman
+podman compose down
 ```
 
 Remove local database volumes only when disposable state is acceptable:
 
 ```bash
+# Docker
 docker compose down -v
+
+# Podman
+podman compose down -v
 ```
 
 Local service names:
@@ -85,11 +99,56 @@ From a clean local checkout, copy `.env.example`, generate real secret material,
 
 ```bash
 cp .env.example .env
-# Edit .env with SECRET_ENCRYPTION_KEY, GRANTORA_AGENT_TOKEN_PEPPER,
-# ADMIN_BOOTSTRAP_TOKEN and GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH.
-docker compose up --build -d
+python - <<'PY'
+import base64
+import hashlib
+import hmac
+import os
+import secrets
+
+admin_token = "grantora-admin-" + secrets.token_urlsafe(24)
+pepper = secrets.token_urlsafe(24)
+digest = hmac.new(pepper.encode(), admin_token.encode(), hashlib.sha256).hexdigest()
+fernet_key = base64.urlsafe_b64encode(os.urandom(32)).decode()
+
+print(f"SECRET_ENCRYPTION_KEY={fernet_key}")
+print(f"GRANTORA_AGENT_TOKEN_PEPPER={pepper}")
+print(f"ADMIN_BOOTSTRAP_TOKEN={admin_token}")
+print(f"GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH=hmac-sha256:{digest}")
+PY
+# Copy the generated values into .env.
+podman compose up --build -d
 make demo-seed
 make smoke
+```
+
+Replace `podman compose` with `docker compose` when using Docker instead.
+
+The compose files expect the canonical `GRANTORA_AGENT_TOKEN_PEPPER` and `GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH` variables to be present in `.env`. The application still accepts legacy aliases such as `AGENT_TOKEN_PEPPER`, `TOKEN_HASH_PEPPER`, and `ADMIN_BOOTSTRAP_TOKEN_HASH`, but the compose layer is intentionally documented against the canonical `GRANTORA_*` names for predictable Docker and Podman behavior.
+
+`make demo-seed` and `make smoke` execute Python modules from the host checkout, so they require Python 3.12+ plus the project dependencies installed locally. On a container-only Podman host, use the built Grantora image on the compose network instead:
+
+```bash
+podman run --rm --network grantora \
+  --env-file .env \
+  -e GRANTORA_API_URL=http://grantora-api:8080 \
+  -e GRANTORA_RUNTIME_URL=http://apisix:9080 \
+  -e APISIX_PUBLIC_URL=http://apisix:9080 \
+  -v "$PWD:/work:Z" \
+  -w /work \
+  --entrypoint python \
+  localhost/grantora-run_grantora-api:latest -m grantora.cli.demo_seed
+
+podman run --rm --network grantora \
+  --env-file .env \
+  --env-file .grantora-demo.env \
+  -e GRANTORA_API_URL=http://grantora-api:8080 \
+  -e GRANTORA_RUNTIME_URL=http://apisix:9080 \
+  -e APISIX_PUBLIC_URL=http://apisix:9080 \
+  -v "$PWD:/work:Z" \
+  -w /work \
+  --entrypoint python \
+  localhost/grantora-run_grantora-api:latest -m grantora.cli.smoke
 ```
 
 `make demo-seed` uses only Admin API endpoints. It creates or reuses:
@@ -399,6 +458,8 @@ Validated shortcut for local disposable environments:
 make backup-restore-smoke
 ```
 
+When the stack is running under Podman Compose, set `GRANTORA_COMPOSE_COMMAND='podman compose'` before `make backup-restore-smoke` so the helper uses the same compose frontend it tears down and restores.
+
 Restore order:
 
 1. Restore environment secrets.
@@ -433,8 +494,9 @@ Bad Fernet key:
 
 ```bash
 python - <<'PY'
-from cryptography.fernet import Fernet
-print(Fernet.generate_key().decode())
+import base64
+import os
+print(base64.urlsafe_b64encode(os.urandom(32)).decode())
 PY
 ```
 

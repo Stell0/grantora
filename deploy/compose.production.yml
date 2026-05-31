@@ -68,7 +68,7 @@ services:
       - grantora-egress
 
   postgres:
-    image: postgres:16-alpine
+    image: docker.io/library/postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-grantora}
@@ -89,7 +89,7 @@ services:
       - grantora-private
 
   apisix-etcd:
-    image: bitnami/etcd:3.5
+    image: docker.io/bitnamilegacy/etcd:3.5
     restart: unless-stopped
     environment:
       ALLOW_NONE_AUTHENTICATION: "yes"
@@ -114,15 +114,19 @@ services:
           - etcd
 
   apisix:
-    image: apache/apisix:3.10.0-debian
+    image: docker.io/apache/apisix:3.10.0-debian
     restart: unless-stopped
     depends_on:
       apisix-etcd:
         condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - /usr/local/bin/render-and-start-apisix.sh
     environment:
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?set APISIX_ADMIN_KEY}
     volumes:
-      - ../containers/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ../containers/apisix/config.yaml:/usr/local/apisix/conf/config-template.yaml:ro,Z
+      - ../containers/apisix/render-and-start.sh:/usr/local/bin/render-and-start-apisix.sh:ro,Z
     ports:
       - "${APISIX_PUBLIC_PORT:-9080}:9080"
     networks:

@@ -32,10 +32,17 @@ cp deploy/production.env.example .env.production
 Start from a clean host:
 
 ```bash
+# Docker
 docker compose --env-file .env.production -f deploy/compose.production.yml pull
 docker compose --env-file .env.production -f deploy/compose.production.yml up -d postgres apisix-etcd
 docker compose --env-file .env.production -f deploy/compose.production.yml run --rm grantora-api python -m alembic upgrade head
 docker compose --env-file .env.production -f deploy/compose.production.yml up -d
+
+# Podman
+podman compose --env-file .env.production -f deploy/compose.production.yml pull
+podman compose --env-file .env.production -f deploy/compose.production.yml up -d postgres apisix-etcd
+podman compose --env-file .env.production -f deploy/compose.production.yml run --rm grantora-api python -m alembic upgrade head
+podman compose --env-file .env.production -f deploy/compose.production.yml up -d
 ```
 
 The production example publishes only the APISIX public port. PostgreSQL, APISIX etcd, Grantora API and the APISIX Admin API stay on container networks. Grantora API also joins an egress network so adapters can reach approved business applications.
@@ -60,13 +67,22 @@ Before upgrading:
 Upgrade one release:
 
 ```bash
+# Docker
 docker compose --env-file .env.production -f deploy/compose.production.yml pull grantora-api
 docker compose --env-file .env.production -f deploy/compose.production.yml stop grantora-api
 docker compose --env-file .env.production -f deploy/compose.production.yml run --rm grantora-api python -m alembic upgrade head
 docker compose --env-file .env.production -f deploy/compose.production.yml up -d grantora-api
+
+# Podman
+podman compose --env-file .env.production -f deploy/compose.production.yml pull grantora-api
+podman compose --env-file .env.production -f deploy/compose.production.yml stop grantora-api
+podman compose --env-file .env.production -f deploy/compose.production.yml run --rm grantora-api python -m alembic upgrade head
+podman compose --env-file .env.production -f deploy/compose.production.yml up -d grantora-api
+
 curl -sS "$GRANTORA_API_URL/healthz"
 curl -sS "$GRANTORA_API_URL/readyz"
-curl -sS -X POST "$GRANTORA_API_URL/v1/admin/apisix/sync" -H "Authorization: Bearer $ADMIN_BOOTSTRAP_TOKEN"
+curl -sS -X POST "$GRANTORA_API_URL/v1/admin/apisix/sync" \
+  -H "Authorization: Bearer $ADMIN_BOOTSTRAP_TOKEN"
 make smoke
 ```
 
