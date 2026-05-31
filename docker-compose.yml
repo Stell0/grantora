@@ -113,10 +113,14 @@ services:
     depends_on:
       apisix-etcd:
         condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - /usr/local/bin/render-and-start-apisix.sh
     environment:
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:-change-me}
     volumes:
-      - ./containers/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./containers/apisix/config.yaml:/usr/local/apisix/conf/config-template.yaml:ro,Z
+      - ./containers/apisix/render-and-start.sh:/usr/local/bin/render-and-start-apisix.sh:ro,Z
     ports:
       - "${APISIX_PUBLIC_PORT:-9080}:9080"
       - "127.0.0.1:${APISIX_ADMIN_PORT:-9180}:9180"
