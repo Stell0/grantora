@@ -9,7 +9,16 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from grantora.cli.demo_workflow import DemoSeedConfig, DemoSeedResult, HTTPGrantoraClient, seed_demo
+from grantora.cli.demo_workflow import (
+    DemoSeedConfig,
+    DemoSeedResult,
+    HTTPGrantoraClient,
+    SmokeConfig,
+    run_smoke,
+    seed_demo,
+    write_demo_env,
+)
+from grantora.openapi.tools import capability_tool_name
 
 pytestmark = pytest.mark.e2e
 
@@ -90,6 +99,7 @@ def test_agent_discovers_and_invokes_allowed_capability_through_apisix(
     assert e2e_context.seed.capability_id in [
         capability["id"] for capability in discovery_response.json()["capabilities"]
     ]
+    assert_filtered_tool_surfaces(e2e_context)
     assert invocation_response.status_code == 200
     assert invocation_response.json()["data"] == {"contacts": []}
     assert_invocation_recorded(
@@ -218,6 +228,264 @@ def test_denied_and_adapter_error_attempts_are_audited_and_counted(
         )
 
 
+def test_documented_demo_workflow_executes_through_apisix(tmp_path: Path) -> None:
+    settings = required_e2e_settings()
+    run_id = uuid4().hex[:8]
+    seed_config = DemoSeedConfig(
+        api_url=settings.api_url,
+        admin_token=settings.admin_token,
+        output_env_path=tmp_path / "demo.env",
+        timeout_seconds=settings.timeout_seconds,
+        workspace_slug=f"docs-{run_id}",
+        application_slug=f"docs-phonebook-{run_id}",
+        user_external_id=f"docs-alice-{run_id}",
+        capability_id=f"mock.phonebook.docs.{run_id}",
+        role_slug=f"docs-reader-{run_id}",
+        agent_slug=f"docs-agent-{run_id}",
+    )
+    admin_client = HTTPGrantoraClient(settings.api_url, timeout_seconds=settings.timeout_seconds)
+    runtime_client = HTTPGrantoraClient(
+        settings.runtime_url,
+        timeout_seconds=settings.timeout_seconds,
+    )
+    seed = seed_demo(admin_client, seed_config)
+
+    assert seed.agent_token is not None
+    write_demo_env(seed_config.output_env_path, seed, seed_config)
+    checks = run_smoke(
+        admin_client,
+        runtime_client,
+        SmokeConfig(
+            api_url=settings.api_url,
+            runtime_url=settings.runtime_url,
+            admin_token=settings.admin_token,
+            agent_token=seed.agent_token,
+            user_external_id=seed_config.user_external_id,
+            capability_id=seed.capability_id,
+            timeout_seconds=settings.timeout_seconds,
+        ),
+    )
+
+    assert [check.name for check in checks] == [
+        "healthz",
+        "readyz",
+        "apisix-sync",
+        "runtime-discovery",
+        "mock-invocation",
+        "filtered-openapi",
+        "mcp-tool-discovery",
+        "mcp-tool-call",
+    ]
+    assert "DEMO_AGENT_TOKEN=" in seed_config.output_env_path.read_text(encoding="utf-8")
+
+
+def test_admin_lifecycle_workflow_covers_create_disable_rotate_and_inspect(
+    e2e_context: E2EContext,
+) -> None:
+    assert_admin_list_contains(
+        e2e_context,
+        "/v1/admin/workspaces",
+        "workspaces",
+        e2e_context.seed.workspace_id,
+        params={"include_disabled": True},
+    )
+    assert_admin_list_contains(
+        e2e_context,
+        "/v1/admin/applications",
+        "applications",
+        e2e_context.seed.application_id,
+        params={"workspace_id": e2e_context.seed.workspace_id, "include_disabled": True},
+    )
+    assert_admin_list_contains(
+        e2e_context,
+        "/v1/admin/users",
+        "users",
+        e2e_context.seed.user_id,
+        params={"workspace_id": e2e_context.seed.workspace_id, "include_disabled": True},
+    )
+    assert_admin_list_contains(
+        e2e_context,
+        "/v1/admin/capabilities",
+        "capabilities",
+        e2e_context.seed.capability_id,
+        params={"workspace_id": e2e_context.seed.workspace_id, "include_disabled": True},
+    )
+    assert_admin_list_contains(
+        e2e_context,
+        "/v1/admin/roles",
+        "roles",
+        e2e_context.seed.role_id,
+        params={"workspace_id": e2e_context.seed.workspace_id, "include_disabled": True},
+    )
+    assert_admin_list_contains(
+        e2e_context,
+        "/v1/admin/agents",
+        "agents",
+        e2e_context.seed.agent_id,
+        params={"workspace_id": e2e_context.seed.workspace_id, "include_disabled": True},
+    )
+    assert_admin_list_contains(
+        e2e_context,
+        "/v1/admin/bindings",
+        "bindings",
+        e2e_context.seed.binding_id,
+        params={"workspace_id": e2e_context.seed.workspace_id, "include_disabled": True},
+    )
+    assert_admin_list_contains(
+        e2e_context,
+        "/v1/admin/secrets",
+        "secrets",
+        e2e_context.seed.secret_id,
+        params={"workspace_id": e2e_context.seed.workspace_id, "include_revoked": True},
+    )
+
+    permissions = admin_get(e2e_context, "/v1/admin/permissions")
+    assert "capability.invoke.read_only" in [
+        permission["code"] for permission in permissions["permissions"]
+    ]
+
+    rotated = admin_post(
+        e2e_context,
+        f"/v1/admin/secrets/{e2e_context.seed.secret_id}/rotate",
+        {"value": "rotated-e2e-upstream-token"},
+        request_id="req_e2e_secret_rotate",
+    )
+    replacement_secret_id = rotated["secret"]["id"]
+    assert rotated["secret"]["status"] == "active"
+    assert rotated["revoked_secret"]["id"] == e2e_context.seed.secret_id
+    assert rotated["revoked_secret"]["status"] == "revoked"
+    assert_active_list_excludes(
+        e2e_context,
+        "/v1/admin/secrets",
+        "secrets",
+        e2e_context.seed.secret_id,
+        params={"workspace_id": e2e_context.seed.workspace_id},
+    )
+    assert_admin_list_contains(
+        e2e_context,
+        "/v1/admin/secrets",
+        "secrets",
+        replacement_secret_id,
+        params={"workspace_id": e2e_context.seed.workspace_id},
+    )
+
+    binding_disabled = admin_patch(
+        e2e_context,
+        f"/v1/admin/bindings/{e2e_context.seed.binding_id}",
+        {"status": "disabled"},
+        request_id="req_e2e_binding_disable",
+    )["binding"]
+    assert binding_disabled["status"] == "disabled"
+    assert_active_list_excludes(
+        e2e_context,
+        "/v1/admin/bindings",
+        "bindings",
+        e2e_context.seed.binding_id,
+        params={"workspace_id": e2e_context.seed.workspace_id},
+    )
+    admin_patch(
+        e2e_context,
+        f"/v1/admin/bindings/{e2e_context.seed.binding_id}",
+        {"status": "active"},
+    )
+
+    capability_disabled = admin_patch(
+        e2e_context,
+        f"/v1/admin/capabilities/{e2e_context.seed.capability_id}",
+        {"status": "disabled"},
+    )["capability"]
+    assert capability_disabled["status"] == "disabled"
+    assert_active_list_excludes(
+        e2e_context,
+        "/v1/admin/capabilities",
+        "capabilities",
+        e2e_context.seed.capability_id,
+        params={"workspace_id": e2e_context.seed.workspace_id},
+    )
+    admin_patch(
+        e2e_context,
+        f"/v1/admin/capabilities/{e2e_context.seed.capability_id}",
+        {"status": "active"},
+    )
+
+    user_disabled = admin_patch(
+        e2e_context,
+        f"/v1/admin/users/{e2e_context.seed.user_id}",
+        {"status": "disabled"},
+    )["user"]
+    assert user_disabled["status"] == "disabled"
+    assert_active_list_excludes(
+        e2e_context,
+        "/v1/admin/users",
+        "users",
+        e2e_context.seed.user_id,
+        params={"workspace_id": e2e_context.seed.workspace_id},
+    )
+    admin_patch(
+        e2e_context,
+        f"/v1/admin/users/{e2e_context.seed.user_id}",
+        {"status": "active"},
+    )
+
+    agent_disabled = admin_patch(
+        e2e_context,
+        f"/v1/admin/agents/{e2e_context.seed.agent_id}",
+        {"status": "disabled"},
+        request_id="req_e2e_agent_disable",
+    )["agent"]
+    assert agent_disabled["status"] == "disabled"
+    assert_active_list_excludes(
+        e2e_context,
+        "/v1/admin/agents",
+        "agents",
+        e2e_context.seed.agent_id,
+        params={"workspace_id": e2e_context.seed.workspace_id},
+    )
+    admin_patch(
+        e2e_context,
+        f"/v1/admin/agents/{e2e_context.seed.agent_id}",
+        {"status": "active"},
+    )
+
+    secret_revoked = admin_patch(
+        e2e_context,
+        f"/v1/admin/secrets/{replacement_secret_id}",
+        {"status": "revoked"},
+        request_id="req_e2e_secret_revoke",
+    )["secret"]
+    assert secret_revoked["status"] == "revoked"
+    assert_active_list_excludes(
+        e2e_context,
+        "/v1/admin/secrets",
+        "secrets",
+        replacement_secret_id,
+        params={"workspace_id": e2e_context.seed.workspace_id},
+    )
+    assert_admin_list_contains(
+        e2e_context,
+        "/v1/admin/secrets",
+        "secrets",
+        replacement_secret_id,
+        params={"workspace_id": e2e_context.seed.workspace_id, "include_revoked": True},
+    )
+
+    audit = admin_get(
+        e2e_context,
+        "/v1/admin/audit",
+        params={
+            "workspace_id": e2e_context.seed.workspace_id,
+            "actor_type": "admin_bootstrap",
+            "limit": 500,
+        },
+    )
+    assert {
+        "req_e2e_secret_rotate",
+        "req_e2e_binding_disable",
+        "req_e2e_agent_disable",
+        "req_e2e_secret_revoke",
+    }.issubset({event["request_id"] for event in audit["audit"]})
+
+
 def create_nethvoice_upstream_error_capability(e2e_context: E2EContext) -> str:
     run_id = uuid4().hex[:8]
     application = admin_post(
@@ -339,6 +607,59 @@ def assert_error_response(response: httpx.Response, status_code: int, code: str)
     assert "Authorization" not in response.text
 
 
+def assert_filtered_tool_surfaces(e2e_context: E2EContext) -> None:
+    openapi_response = e2e_context.runtime.get(
+        "/v1/capabilities/openapi.json",
+        headers=agent_headers(e2e_context),
+        params={"user": e2e_context.seed_config.user_external_id},
+    )
+    mcp_response = e2e_context.runtime.get(
+        "/v1/mcp/tools",
+        headers=agent_headers(e2e_context),
+        params={"user": e2e_context.seed_config.user_external_id},
+    )
+
+    assert openapi_response.status_code == 200
+    assert mcp_response.status_code == 200
+    openapi_capabilities = {
+        operation["x-grantora-capability-id"]
+        for methods in openapi_response.json()["paths"].values()
+        for operation in methods.values()
+    }
+    mcp_capabilities = {
+        tool["_meta"]["grantora/capability_id"] for tool in mcp_response.json()["tools"]
+    }
+    assert openapi_capabilities == {e2e_context.seed.capability_id}
+    assert mcp_capabilities == {e2e_context.seed.capability_id}
+    assert capability_tool_name(e2e_context.seed.capability_id) in {
+        tool["name"] for tool in mcp_response.json()["tools"]
+    }
+
+
+def assert_admin_list_contains(
+    e2e_context: E2EContext,
+    path: str,
+    key: str,
+    identifier: str,
+    *,
+    params: dict[str, object] | None = None,
+) -> None:
+    body = admin_get(e2e_context, path, params={"limit": 500, **(params or {})})
+    assert identifier in {item["id"] for item in body[key]}
+
+
+def assert_active_list_excludes(
+    e2e_context: E2EContext,
+    path: str,
+    key: str,
+    identifier: str,
+    *,
+    params: dict[str, object] | None = None,
+) -> None:
+    body = admin_get(e2e_context, path, params={"limit": 500, **(params or {})})
+    assert identifier not in {item["id"] for item in body[key]}
+
+
 def admin_get(
     e2e_context: E2EContext,
     path: str,
@@ -350,8 +671,18 @@ def admin_get(
     return response.json()
 
 
-def admin_post(e2e_context: E2EContext, path: str, payload: dict[str, object]) -> dict[str, object]:
-    response = e2e_context.admin.post(path, headers=admin_headers(e2e_context), json=payload)
+def admin_post(
+    e2e_context: E2EContext,
+    path: str,
+    payload: dict[str, object],
+    *,
+    request_id: str | None = None,
+) -> dict[str, object]:
+    response = e2e_context.admin.post(
+        path,
+        headers=admin_headers(e2e_context, request_id=request_id),
+        json=payload,
+    )
     assert 200 <= response.status_code < 300, response.text
     return response.json()
 
@@ -360,14 +691,23 @@ def admin_patch(
     e2e_context: E2EContext,
     path: str,
     payload: dict[str, object],
+    *,
+    request_id: str | None = None,
 ) -> dict[str, object]:
-    response = e2e_context.admin.patch(path, headers=admin_headers(e2e_context), json=payload)
+    response = e2e_context.admin.patch(
+        path,
+        headers=admin_headers(e2e_context, request_id=request_id),
+        json=payload,
+    )
     assert response.status_code == 200, response.text
     return response.json()
 
 
-def admin_headers(e2e_context: E2EContext) -> dict[str, str]:
-    return {"Authorization": f"Bearer {e2e_context.settings.admin_token}"}
+def admin_headers(e2e_context: E2EContext, *, request_id: str | None = None) -> dict[str, str]:
+    headers = {"Authorization": f"Bearer {e2e_context.settings.admin_token}"}
+    if request_id is not None:
+        headers["X-Request-Id"] = request_id
+    return headers
 
 
 def agent_headers(e2e_context: E2EContext, *, request_id: str | None = None) -> dict[str, str]:

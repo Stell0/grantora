@@ -191,13 +191,13 @@ Goal: ship a standalone product that can later be managed by an NS8 module.
 
 Goal: prove the full software is ready for real administrators and agents.
 
-- [ ] A human can follow documented steps from an empty checkout to successful capability invocation through APISIX. Test: e2e script executes the documentation.
-- [ ] A human can create, disable, rotate and inspect all required dynamic objects through supported admin surfaces. Test: admin workflow e2e covers create, update/status, revoke and list paths.
-- [ ] Agents can discover OpenAPI and MCP-compatible tools filtered by user and authorization. Test: fixture and e2e tests match expected capability set.
-- [ ] Operators can back up and restore PostgreSQL plus environment-managed secrets and regenerate APISIX state. Test: restore smoke test succeeds.
-- [ ] Security regression matrix passes for every release. Test: matrix in `TESTING.md` is automated or explicitly documented as manual with evidence.
-- [ ] The human docs are copied or refined into `README.md` and `OPERATIONS.md`
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] A human can follow documented steps from an empty checkout to successful capability invocation through APISIX. Test: e2e script executes the documentation.
+- [x] A human can create, disable, rotate and inspect all required dynamic objects through supported admin surfaces. Test: admin workflow e2e covers create, update/status, revoke and list paths.
+- [x] Agents can discover OpenAPI and MCP-compatible tools filtered by user and authorization. Test: fixture and e2e tests match expected capability set.
+- [x] Operators can back up and restore PostgreSQL plus environment-managed secrets and regenerate APISIX state. Test: restore smoke test succeeds.
+- [x] Security regression matrix passes for every release. Test: matrix in `TESTING.md` is automated or explicitly documented as manual with evidence.
+- [x] The human docs are copied or refined into `README.md` and `OPERATIONS.md`
+- [x] output git commands to add files and commit changes using a conventional commit 
 
 ## Human Documentation
 

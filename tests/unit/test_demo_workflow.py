@@ -77,6 +77,16 @@ class FakeGrantoraAPI:
         if path == "/v1/capabilities" and token == self.agent_token:
             capabilities = self.capabilities if query.get("user") == "alice" else []
             return {"capabilities": capabilities, "limit": 100, "offset": 0}
+        if path == "/v1/capabilities/openapi.json" and token == self.agent_token:
+            paths = {}
+            if query.get("user") == "alice":
+                paths["/v1/invoke/mock.phonebook.search"] = {
+                    "post": {
+                        "x-grantora-capability-id": "mock.phonebook.search",
+                        "x-grantora-tool-name": "mock_phonebook_search",
+                    }
+                }
+            return {"paths": paths}
         if path == "/v1/mcp/tools" and token == self.agent_token:
             tools = []
             if query.get("user") == "alice":
@@ -238,6 +248,7 @@ def test_smoke_checks_health_sync_discovery_and_invocation(tmp_path) -> None:
         "apisix-sync",
         "runtime-discovery",
         "mock-invocation",
+        "filtered-openapi",
         "mcp-tool-discovery",
         "mcp-tool-call",
     ]

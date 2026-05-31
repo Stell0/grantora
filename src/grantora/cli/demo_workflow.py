@@ -277,6 +277,7 @@ def run_smoke(
         _check_apisix_sync(admin_client, config),
         _check_discovery(runtime_client, config),
         _check_invocation(runtime_client, config),
+        _check_filtered_openapi(runtime_client, config),
         _check_mcp_tools(runtime_client, config),
         _check_mcp_call(runtime_client, config),
     ]
@@ -623,6 +624,23 @@ def _check_invocation(client: GrantoraClient, config: SmokeConfig) -> CheckRepor
     if body.get("status") != "ok" or body.get("capability") != config.capability_id:
         raise WorkflowError("Mock invocation did not return a successful capability response")
     return CheckReport("mock-invocation", "ok", "adapter returned status ok")
+
+
+def _check_filtered_openapi(client: GrantoraClient, config: SmokeConfig) -> CheckReport:
+    body = client.get(
+        "/v1/capabilities/openapi.json",
+        token=config.agent_token,
+        query={"user": config.user_external_id},
+    )
+    path = f"/v1/invoke/{config.capability_id}"
+    operation = body.get("paths", {}).get(path, {}).get("post", {})
+    if operation.get("x-grantora-capability-id") != config.capability_id:
+        raise WorkflowError(
+            f"Filtered OpenAPI did not include required capability {config.capability_id!r}"
+        )
+    if operation.get("x-grantora-tool-name") != capability_tool_name(config.capability_id):
+        raise WorkflowError("Filtered OpenAPI did not include the expected tool name")
+    return CheckReport("filtered-openapi", "ok", f"found {config.capability_id}")
 
 
 def _check_mcp_tools(client: GrantoraClient, config: SmokeConfig) -> CheckReport:

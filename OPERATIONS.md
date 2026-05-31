@@ -112,6 +112,7 @@ The command writes demo ids and the one-time agent token returned by agent creat
 - `POST /v1/admin/apisix/sync` on the direct API
 - `GET /v1/capabilities?user=alice` through APISIX
 - `POST /v1/invoke/mock.phonebook.search` through APISIX
+- `GET /v1/capabilities/openapi.json?user=alice` through APISIX
 - `GET /v1/mcp/tools?user=alice` through APISIX
 - `POST /v1/mcp/call` through APISIX
 
@@ -234,7 +235,7 @@ export GRANTORA_E2E_RUNTIME_URL='http://localhost:9080'
 make test-e2e
 ```
 
-The e2e suite seeds a unique demo workspace through Admin APIs, syncs APISIX, verifies discovery and invocation through `http://localhost:9080`, and checks that denied, missing-secret and upstream-error attempts have audit and usage records.
+The e2e suite seeds a unique demo workspace through Admin APIs, syncs APISIX, verifies discovery and invocation through `http://localhost:9080`, checks filtered OpenAPI and MCP tool discovery, exercises the documented demo seed/smoke workflow, covers admin list, disable, rotate and revoke paths, and checks that denied, missing-secret and upstream-error attempts have audit and usage records.
 
 Run the destructive backup and restore smoke flow only against disposable compose state:
 
@@ -246,6 +247,25 @@ make backup-restore-smoke
 That workflow seeds the demo, writes a PostgreSQL custom dump, tears down compose volumes, restores PostgreSQL from the dump, waits for Grantora readiness, resyncs APISIX and verifies a demo capability invocation still succeeds.
 
 Provider adapter integration tests use sanitized mock upstream payloads and `httpx` transports, so they do not require network access to NethVoice or Nextcloud.
+
+## Product Acceptance
+
+Use these commands as the release-candidate acceptance path:
+
+```bash
+make test-unit
+make test-integration
+export GRANTORA_RUN_E2E=1
+make test-e2e
+export GRANTORA_RUN_BACKUP_RESTORE_SMOKE=1
+make backup-restore-smoke
+make security-scan
+make sbom
+make container-scan IMAGE=<candidate-image>
+make release-image-smoke
+```
+
+The acceptance evidence proves that a human can start from the documented local workflow, create required dynamic objects through Admin APIs, invoke through APISIX, inspect audit and usage records, rotate and revoke secrets, restore PostgreSQL plus environment-managed secrets, regenerate APISIX state, and verify the release security matrix in [TESTING.md](TESTING.md).
 
 ## Provider Capability Templates
 

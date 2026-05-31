@@ -90,7 +90,11 @@ The PostgreSQL fixture uses a temporary schema inside the configured database an
 Required flows:
 
 - Agent gets filtered capabilities through APISIX.
+- Agent gets filtered capability OpenAPI through APISIX.
+- Agent gets MCP-compatible tools through APISIX.
 - Agent invokes an allowed capability through APISIX.
+- Documented demo seed and smoke workflow succeeds through APISIX.
+- Admin workflow can list, disable, rotate and revoke dynamic objects through Admin APIs.
 - Agent with no binding is denied.
 - Agent cannot act for another user.
 - Agent cannot invoke a disabled capability.
@@ -113,28 +117,28 @@ GRANTORA_E2E_RUNTIME_URL=http://localhost:9080
 
 ## Security Regression Matrix
 
-Minimum scenarios:
+Minimum scenarios and release evidence:
 
-```text
-agent with no binding is denied
-agent cannot act for another user
-agent cannot invoke disabled capability
-secret is not returned in responses
-secret is not written to logs
-invalid PostgreSQL secret ciphertext fails closed
-external secret reference fails closed when no backend is configured
-denied request is audited
-successful request is audited
-usage counter is written
-adapter error is normalized
-APISIX route reconciliation is idempotent
-raw upstream path passthrough is unavailable by default
-SSRF-prone upstream base URLs are rejected
-oversized request bodies are rejected safely
-dependency audit, SBOM and container scan artifacts are generated for release candidates
-versioned release image starts clean and reports its package version
-production compose does not publish PostgreSQL, Grantora API or APISIX Admin API host ports
-```
+| Scenario | Evidence |
+| --- | --- |
+| agent with no binding is denied | `make test-unit`; `make test-e2e` with `GRANTORA_RUN_E2E=1` |
+| agent cannot act for another user | `make test-unit`; `make test-e2e` with `GRANTORA_RUN_E2E=1` |
+| agent cannot invoke disabled capability | `make test-unit`; `make test-e2e` with `GRANTORA_RUN_E2E=1` |
+| secret is not returned in responses | `make test-unit` |
+| secret is not written to logs | `make test-unit` |
+| invalid PostgreSQL secret ciphertext fails closed | `make test-unit` |
+| external secret reference fails closed when no backend is configured | `make test-unit` |
+| denied request is audited | `make test-unit`; `make test-e2e` with `GRANTORA_RUN_E2E=1` |
+| successful request is audited | `make test-unit`; `make test-e2e` with `GRANTORA_RUN_E2E=1` |
+| usage counter is written | `make test-unit`; `make test-e2e` with `GRANTORA_RUN_E2E=1` |
+| adapter error is normalized | `make test-unit`; `make test-e2e` with `GRANTORA_RUN_E2E=1` |
+| APISIX route reconciliation is idempotent | `make test-unit`; `make test-integration` with APISIX env |
+| raw upstream path passthrough is unavailable by default | `make test-unit` |
+| SSRF-prone upstream base URLs are rejected | `make test-unit` |
+| oversized request bodies are rejected safely | `make test-unit` |
+| dependency audit, SBOM and container scan artifacts are generated for release candidates | `make security-scan`; `make sbom`; `make container-scan IMAGE=<candidate-image>` |
+| versioned release image starts clean and reports its package version | `make release-image`; `make release-image-smoke` |
+| production compose does not publish PostgreSQL, Grantora API or APISIX Admin API host ports | `make test-unit` |
 
 ## Adapter Tests
 

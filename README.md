@@ -27,7 +27,7 @@ make retention RETENTION_FLAGS=--dry-run
 
 The compose file starts `grantora-api`, `postgres`, `apisix` and `apisix-etcd`. When `MIGRATIONS_AUTO_RUN=true`, the API container runs Alembic migrations before starting the FastAPI app factory from `src/grantora/main.py`.
 
-`make demo-seed` uses only supported Admin APIs to create or reuse a demo workspace, mock application, user, capability, role, binding, secret and agent. It writes the one-time agent token and demo ids to `.grantora-demo.env`, which is ignored by git. `make smoke` loads `.env` and `.grantora-demo.env`, checks health and readiness, syncs APISIX, discovers the demo capability through APISIX and invokes the mock phonebook capability.
+`make demo-seed` uses only supported Admin APIs to create or reuse a demo workspace, mock application, user, capability, role, binding, secret and agent. It writes the one-time agent token and demo ids to `.grantora-demo.env`, which is ignored by git. `make smoke` loads `.env` and `.grantora-demo.env`, checks health and readiness, syncs APISIX, discovers the demo capability through APISIX, invokes the mock phonebook capability, verifies filtered OpenAPI, lists MCP-compatible tools and calls the MCP bridge.
 
 Test tiers:
 
@@ -43,6 +43,12 @@ make release-image-smoke
 ```
 
 Integration and e2e tests skip external infrastructure checks unless the documented `GRANTORA_INTEGRATION_*`, `GRANTORA_RUN_E2E=1`, or `GRANTORA_RUN_BACKUP_RESTORE_SMOKE=1` environment variables are set. Provider adapter integration tests use mock `httpx` transports and do not contact real upstream services.
+
+## Product Acceptance
+
+Milestone 18 acceptance is executable from the documented operator path. With local compose running and `ADMIN_BOOTSTRAP_TOKEN` available, `make test-e2e` seeds a unique workspace through supported Admin APIs, runs the documented seed and smoke workflow through APISIX, verifies filtered capability OpenAPI and MCP tool discovery, exercises denial/audit/usage paths, and covers admin list, disable, rotate and revoke operations.
+
+Backup and restore acceptance is covered by `make backup-restore-smoke` against disposable compose state. Release security evidence is produced by `make security-scan`, `make sbom`, `make container-scan IMAGE=<candidate-image>` and `make release-image-smoke`; the scenario-to-evidence matrix is maintained in [TESTING.md](TESTING.md).
 
 ## Operations
 
@@ -99,4 +105,4 @@ For deployments where APISIX terminates TLS, set `GRANTORA_PUBLIC_BASE_URL` to t
 
 ## Development Status
 
-Status: Milestone 17 release packaging and NS8 readiness implemented. See [PLAN.md](PLAN.md) for the current roadmap status.
+Status: Milestone 18 product completion acceptance implemented. See [PLAN.md](PLAN.md) for the current roadmap status.
