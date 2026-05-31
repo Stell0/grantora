@@ -25,7 +25,9 @@ def test_apisix_admin_config_is_not_open_to_the_world() -> None:
 
     assert "0.0.0.0/0" not in config
     assert "127.0.0.0/24" in config
+    assert "10.0.0.0/8" in config
     assert "172.16.0.0/12" in config
+    assert "192.168.0.0/16" in config
 
 
 def test_apisix_environment_reference_is_wired_to_settings(monkeypatch) -> None:
