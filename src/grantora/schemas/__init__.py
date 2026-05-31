@@ -7,6 +7,12 @@ from grantora.schemas.auth import (
     MeResponse,
     WorkspaceSummary,
 )
+from grantora.schemas.runtime import (
+    CapabilityInvokeRequest,
+    CapabilityInvokeResponse,
+    CapabilityListResponse,
+    CapabilitySummary,
+)
 
 __all__ = [
     "AdminAgentCreateRequest",
@@ -14,6 +20,10 @@ __all__ = [
     "AdminAgentListResponse",
     "AgentAdminSummary",
     "AgentSummary",
+    "CapabilityInvokeRequest",
+    "CapabilityInvokeResponse",
+    "CapabilityListResponse",
+    "CapabilitySummary",
     "MeResponse",
     "WorkspaceSummary",
 ]

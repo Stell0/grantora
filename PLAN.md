@@ -23,7 +23,7 @@ This roadmap is the working build order for Grantora. Keep checkboxes current an
 - [x] Add secret metadata and encrypted value model. Test: secret is stored encrypted and not returned by default queries.
 - [x] Add audit event model. Test: denied and successful decisions can be recorded.
 - [x] Add usage event model. Test: successful, denied and error status events can be recorded.
-- [x] output git commands to add files and commit changes using a conventional commit 
+- [x] output git commands to add files and commit changes using a conventional commit
 
 ## Milestone 2 - Agent Authentication
 
@@ -32,18 +32,18 @@ This roadmap is the working build order for Grantora. Keep checkboxes current an
 - [x] Authenticate `Authorization: Bearer` runtime requests. Test: missing, invalid, disabled and valid agents produce expected results.
 - [x] Add `/v1/me`. Test: authenticated agent receives workspace and agent metadata without secrets.
 - [x] Implement admin bootstrap authentication. Test: invalid admin token is denied and valid token can reach admin endpoints.
-- [x] output git commands to add files and commit changes using a conventional commit 
+- [x] output git commands to add files and commit changes using a conventional commit
 
 ## Milestone 3 - Capability Invocation
 
-- [ ] Add `GET /v1/capabilities`. Test: agent sees only capabilities allowed for the selected user.
-- [ ] Add `POST /v1/invoke/{capability_id}`. Test: valid request reaches adapter and returns normalized data.
-- [ ] Implement deny-by-default authorization. Test: no binding, wrong user, disabled agent and disabled capability are denied.
-- [ ] Validate capability input schema. Test: invalid input returns a safe validation error.
-- [ ] Resolve secrets according to the lookup order. Test: missing secret fails closed.
-- [ ] Write audit events for allow and deny decisions. Test: denied request is audited.
-- [ ] Write usage events for success, denied and error outcomes. Test: usage record includes workspace, agent, user, capability and latency.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] Add `GET /v1/capabilities`. Test: agent sees only capabilities allowed for the selected user.
+- [x] Add `POST /v1/invoke/{capability_id}`. Test: valid request reaches adapter and returns normalized data.
+- [x] Implement deny-by-default authorization. Test: no binding, wrong user, disabled agent and disabled capability are denied.
+- [x] Validate capability input schema. Test: invalid input returns a safe validation error.
+- [x] Resolve secrets according to the lookup order. Test: missing secret fails closed.
+- [x] Write audit events for allow and deny decisions. Test: denied request is audited.
+- [x] Write usage events for success, denied and error outcomes. Test: usage record includes workspace, agent, user, capability and latency.
+- [x] Output git add and conventional commit commands.
 
 ## Milestone 4 - APISIX Integration
 

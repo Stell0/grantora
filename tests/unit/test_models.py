@@ -29,9 +29,11 @@ from grantora.db.queries import (
     get_active_application_instance_by_slug,
     get_active_binding,
     get_active_capability_by_id,
+    get_active_secret_for_owner,
     get_active_user_by_external_id,
     get_active_workspace_by_id,
     get_active_workspace_by_slug,
+    list_active_capabilities_for_agent_user,
     role_grants_permission,
 )
 from grantora.secrets import SecretCipher
@@ -175,6 +177,55 @@ def test_active_capability_lookup_uses_id_and_workspace(session: Session) -> Non
     )
 
 
+def test_capability_listing_uses_active_binding_for_agent_and_user(session: Session) -> None:
+    records = add_core_records(session)
+    unbound_capability = Capability(
+        id="nethvoice.phonebook.unbound",
+        workspace=records.workspace,
+        application_instance=records.application,
+        name="Unbound phonebook",
+        provider_type="nethvoice",
+        adapter="nethvoice",
+        operation="phonebook.unbound",
+        auth_mode="user",
+        risk_class="read_only",
+        input_schema={"type": "object"},
+        output_schema={"type": "object"},
+    )
+    disabled_capability = Capability(
+        id="nethvoice.phonebook.disabled",
+        workspace=records.workspace,
+        application_instance=records.application,
+        name="Disabled phonebook",
+        provider_type="nethvoice",
+        adapter="nethvoice",
+        operation="phonebook.disabled",
+        auth_mode="user",
+        risk_class="read_only",
+        input_schema={"type": "object"},
+        output_schema={"type": "object"},
+        status="disabled",
+    )
+    disabled_binding = Binding(
+        workspace=records.workspace,
+        agent=records.agent,
+        user=records.user,
+        capability=disabled_capability,
+        role=records.role,
+    )
+    session.add_all([unbound_capability, disabled_capability, disabled_binding])
+    session.commit()
+
+    capabilities = list_active_capabilities_for_agent_user(
+        session,
+        records.workspace.id,
+        records.agent.id,
+        records.user.id,
+    )
+
+    assert capabilities == [records.capability]
+
+
 def test_role_permission_lookup_grants_expected_runtime_permission(session: Session) -> None:
     records = add_core_records(session)
 
@@ -258,6 +309,27 @@ def test_secret_value_is_encrypted_and_deferred_from_default_queries(session: Se
     assert loaded_with_value is not None
     assert loaded_with_value.encrypted_value == encrypted_value
     assert cipher.decrypt(loaded_with_value.encrypted_value) == plaintext
+
+    active_secret = get_active_secret_for_owner(
+        session,
+        records.workspace.id,
+        records.application.id,
+        "user",
+        records.user.id,
+    )
+
+    assert active_secret == loaded_with_value
+    assert active_secret.encrypted_value == encrypted_value
+    assert (
+        get_active_secret_for_owner(
+            session,
+            records.workspace.id,
+            records.application.id,
+            "agent",
+            records.agent.id,
+        )
+        is None
+    )
 
 
 def test_audit_and_usage_events_can_record_decisions_and_statuses(session: Session) -> None:

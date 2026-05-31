@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 
 from grantora import __version__
+from grantora.adapters import AdapterRegistry
 from grantora.api.admin import router as admin_router
 from grantora.api.errors import GrantoraAPIError, create_request_id, grantora_api_error_handler
 from grantora.api.health import router as health_router
@@ -42,6 +43,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
 
     app.state.settings = resolved_settings
     app.state.database = resolved_database
+    app.state.adapters = AdapterRegistry()
     app.add_exception_handler(GrantoraAPIError, grantora_api_error_handler)
     app.include_router(health_router)
     app.include_router(runtime_router)

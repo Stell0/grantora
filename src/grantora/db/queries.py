@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 from grantora.db.models import (
     ACTIVE_STATUS,
@@ -13,6 +13,7 @@ from grantora.db.models import (
     Capability,
     Role,
     RolePermission,
+    Secret,
     User,
     Workspace,
 )
@@ -101,6 +102,28 @@ def get_active_capability_by_id(
     return session.scalar(statement)
 
 
+def list_active_capabilities_for_agent_user(
+    session: Session,
+    workspace_id: UUID,
+    agent_id: UUID,
+    user_id: UUID,
+) -> list[Capability]:
+    statement = (
+        select(Capability)
+        .join(Binding, Binding.capability_id == Capability.id)
+        .where(
+            Capability.workspace_id == workspace_id,
+            Capability.status == ACTIVE_STATUS,
+            Binding.workspace_id == workspace_id,
+            Binding.agent_id == agent_id,
+            Binding.user_id == user_id,
+            Binding.status == ACTIVE_STATUS,
+        )
+        .order_by(Capability.id)
+    )
+    return list(session.scalars(statement).all())
+
+
 def role_grants_permission(session: Session, role_id: UUID, permission_code: str) -> bool:
     statement = (
         select(RolePermission)
@@ -127,5 +150,27 @@ def get_active_binding(
         Binding.user_id == user_id,
         Binding.capability_id == capability_id,
         Binding.status == ACTIVE_STATUS,
+    )
+    return session.scalar(statement)
+
+
+def get_active_secret_for_owner(
+    session: Session,
+    workspace_id: UUID,
+    application_instance_id: UUID,
+    owner_type: str,
+    owner_id: UUID,
+) -> Secret | None:
+    statement = (
+        select(Secret)
+        .options(undefer(Secret.encrypted_value))
+        .where(
+            Secret.workspace_id == workspace_id,
+            Secret.application_instance_id == application_instance_id,
+            Secret.owner_type == owner_type,
+            Secret.owner_id == owner_id,
+            Secret.status == ACTIVE_STATUS,
+        )
+        .order_by(Secret.id)
     )
     return session.scalar(statement)
