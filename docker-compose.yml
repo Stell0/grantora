@@ -28,8 +28,8 @@ services:
       APISIX_RATE_LIMIT_COUNT: ${APISIX_RATE_LIMIT_COUNT:-1000}
       APISIX_RATE_LIMIT_TIME_WINDOW: ${APISIX_RATE_LIMIT_TIME_WINDOW:-60}
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-change-me-32-byte-base64-key}
-      GRANTORA_AGENT_TOKEN_PEPPER: ${GRANTORA_AGENT_TOKEN_PEPPER:-${AGENT_TOKEN_PEPPER:-${TOKEN_HASH_PEPPER:-change-me-agent-token-pepper}}}
-      GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH: ${GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH:-${ADMIN_BOOTSTRAP_TOKEN_HASH:-change-me}}
+      GRANTORA_AGENT_TOKEN_PEPPER: ${GRANTORA_AGENT_TOKEN_PEPPER:-change-me-agent-token-pepper}
+      GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH: ${GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH:-change-me}
       METRICS_ENABLED: ${METRICS_ENABLED:-true}
       AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-365}
       USAGE_RETENTION_DAYS: ${USAGE_RETENTION_DAYS:-365}
@@ -64,7 +64,7 @@ services:
       - grantora
 
   postgres:
-    image: postgres:16-alpine
+    image: docker.io/library/postgres:16-alpine
     container_name: grantora-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-grantora}
@@ -85,7 +85,7 @@ services:
       - grantora
 
   apisix-etcd:
-    image: bitnami/etcd:3.5
+    image: docker.io/bitnamilegacy/etcd:3.5
     container_name: grantora-apisix-etcd
     environment:
       ALLOW_NONE_AUTHENTICATION: "yes"
@@ -108,7 +108,7 @@ services:
           - etcd
 
   apisix:
-    image: apache/apisix:3.10.0-debian
+    image: docker.io/apache/apisix:3.10.0-debian
     container_name: grantora-apisix
     depends_on:
       apisix-etcd:
