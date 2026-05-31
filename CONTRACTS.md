@@ -339,6 +339,51 @@ Rules:
 - `input_schema` and `output_schema` must be valid JSON Schemas.
 - Valid `auth_mode` and `risk_class` values are the values documented in the capability contract.
 
+### GET /v1/admin/capability-templates
+
+Returns built-in capability templates for supported provider adapters.
+
+Optional query parameters:
+
+- `provider_type`: filter templates to one provider type.
+- `limit`, `offset`: bounded pagination.
+
+Success response wraps a `templates` array. Each template includes `id`, `name`, `version`, `provider_type`, `adapter`, `operation`, `auth_mode`, `risk_class`, `input_schema`, `output_schema`, `required_secret_types` and `upstream_permissions`.
+
+Rules:
+
+- Templates contain safe setup metadata only; they must not include base URLs, secrets, tokens or provider-private configuration.
+- Template schemas are the canonical examples for creating common capabilities without hand-writing JSON Schema.
+
+### POST /v1/admin/capabilities/from-template
+
+Creates a capability from a built-in template.
+
+Request body:
+
+```json
+{
+  "template_id": "nextcloud.files.search",
+  "workspace_id": "uuid",
+  "application_instance_id": "uuid",
+  "id": "nextcloud.files.search",
+  "name": "Search files",
+  "version": 1,
+  "status": "active"
+}
+```
+
+`id`, `name` and `version` are optional overrides. When omitted, the template values are used.
+
+Success response is the same as `POST /v1/admin/capabilities`.
+
+Rules:
+
+- The referenced application instance must belong to the same active workspace.
+- The application provider type must match the selected template provider type.
+- Unknown templates fail with `capability_template_not_found`.
+- Created capabilities still use globally unique capability ids.
+
 ### GET /v1/admin/capabilities
 
 Returns capability metadata.
@@ -792,6 +837,68 @@ output_schema:
   additionalProperties: false
 ```
 
+Built-in template `nextcloud.files.search` follows the same capability shape with these provider-specific fields:
+
+```yaml
+id: nextcloud.files.search
+name: Search files
+version: 1
+provider_type: nextcloud
+adapter: nextcloud
+operation: files.search
+auth_mode: user
+risk_class: read_only
+input_schema:
+  type: object
+  properties:
+    query:
+      type: string
+      minLength: 1
+    limit:
+      type: integer
+      minimum: 1
+      maximum: 50
+  required:
+    - query
+  additionalProperties: false
+output_schema:
+  type: object
+  properties:
+    files:
+      type: array
+      items:
+        type: object
+        properties:
+          path:
+            type: string
+          display_name:
+            type: string
+          mime_type:
+            type: string
+          size:
+            type:
+              - integer
+              - "null"
+          modified_at:
+            type:
+              - string
+              - "null"
+          source:
+            type: string
+            const: nextcloud
+        required:
+          - path
+          - display_name
+          - mime_type
+          - size
+          - modified_at
+          - source
+        additionalProperties: false
+  required:
+    - files
+  additionalProperties: false
+```
+
 Valid `auth_mode` values: `system`, `user`, `user+scope`, `admin`.
 
 Valid `risk_class` values: `read_only`, `draft`, `side_effect`, `destructive`, `admin`.
@@ -838,12 +945,15 @@ UPSTREAM_TIMEOUT_SECONDS
 UPSTREAM_CONNECT_TIMEOUT_SECONDS
 UPSTREAM_MAX_RESPONSE_BYTES
 UPSTREAM_TLS_VERIFY
+UPSTREAM_READ_RETRY_ATTEMPTS
 ```
 
 Rules:
 
 - Upstream timeouts return the safe error code `upstream_timeout`.
 - Upstream responses larger than `UPSTREAM_MAX_RESPONSE_BYTES` return the safe error code `upstream_payload_too_large`.
+- Read-only capabilities may retry retryable network failures, 429 and 5xx responses up to `UPSTREAM_READ_RETRY_ATTEMPTS` total attempts.
+- Side-effecting, destructive, draft and admin capabilities are not retried by default.
 - Safe adapter errors must not include upstream response bodies, internal URLs, stack traces or credential material.
 
 ## Audit Event Contract

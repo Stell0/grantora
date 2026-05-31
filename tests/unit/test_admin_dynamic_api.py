@@ -614,6 +614,100 @@ def test_default_permissions_seed_idempotently(api_context: APIContext) -> None:
     assert second_response.json() == first_response.json()
 
 
+def test_admin_can_instantiate_capability_from_template(api_context: APIContext) -> None:
+    workspace = post_admin(
+        api_context,
+        "/v1/admin/workspaces",
+        {"slug": "template-acme", "display_name": "Template Acme"},
+    )["workspace"]
+    workspace_id = UUID(workspace["id"])
+    nextcloud_application = post_admin(
+        api_context,
+        "/v1/admin/applications",
+        {
+            "workspace_id": str(workspace_id),
+            "slug": "nextcloud",
+            "display_name": "Nextcloud",
+            "provider_type": "nextcloud",
+            "base_url": "https://cloud.example.test",
+        },
+    )["application"]
+    mock_application = post_admin(
+        api_context,
+        "/v1/admin/applications",
+        {
+            "workspace_id": str(workspace_id),
+            "slug": "mock",
+            "display_name": "Mock",
+            "provider_type": "mock",
+            "base_url": "https://mock.example.test",
+        },
+    )["application"]
+
+    templates_response = api_context.client.get(
+        "/v1/admin/capability-templates?provider_type=nextcloud",
+        headers=authorization_headers("admin-token"),
+    )
+    unknown_template = api_context.client.post(
+        "/v1/admin/capabilities/from-template",
+        headers=authorization_headers("admin-token"),
+        json={
+            "template_id": "missing.provider.operation",
+            "workspace_id": str(workspace_id),
+            "application_instance_id": nextcloud_application["id"],
+        },
+    )
+    provider_mismatch = api_context.client.post(
+        "/v1/admin/capabilities/from-template",
+        headers=authorization_headers("admin-token"),
+        json={
+            "template_id": "nextcloud.files.search",
+            "workspace_id": str(workspace_id),
+            "application_instance_id": mock_application["id"],
+        },
+    )
+    capability = post_admin(
+        api_context,
+        "/v1/admin/capabilities/from-template",
+        {
+            "template_id": "nextcloud.files.search",
+            "workspace_id": str(workspace_id),
+            "application_instance_id": nextcloud_application["id"],
+            "id": "nextcloud.files.search.template_acme",
+        },
+        request_id="req_template_capability_create",
+    )["capability"]
+
+    assert templates_response.status_code == 200
+    templates = templates_response.json()["templates"]
+    assert [template["id"] for template in templates] == ["nextcloud.files.search"]
+    assert templates[0]["required_secret_types"] == ["basic_auth", "bearer_token"]
+    assert templates[0]["upstream_permissions"] == ["files:read", "search:read"]
+    assert "base_url" not in templates[0]
+    assert "https://cloud.example.test" not in templates_response.text
+    assert unknown_template.status_code == 404
+    assert unknown_template.json()["error"]["code"] == "capability_template_not_found"
+    assert provider_mismatch.status_code == 422
+    assert provider_mismatch.json()["error"]["code"] == "application_provider_mismatch"
+    assert capability["id"] == "nextcloud.files.search.template_acme"
+    assert capability["name"] == "Search files"
+    assert capability["provider_type"] == "nextcloud"
+    assert capability["adapter"] == "nextcloud"
+    assert capability["operation"] == "files.search"
+    assert capability["risk_class"] == "read_only"
+    assert capability["input_schema"] == templates[0]["input_schema"]
+    assert capability["output_schema"] == templates[0]["output_schema"]
+
+    with api_context.database.session_factory() as session:
+        admin_audit = session.scalar(
+            select(AuditEvent).where(AuditEvent.request_id == "req_template_capability_create")
+        )
+
+    assert admin_audit is not None
+    assert admin_audit.actor_type == "admin_bootstrap"
+    assert admin_audit.capability_id == "nextcloud.files.search.template_acme"
+
+
 def bootstrap_runtime_records(api_context: APIContext) -> BootstrapRecords:
     workspace = post_admin(
         api_context,

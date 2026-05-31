@@ -107,7 +107,8 @@ Adapters may reject incompatible secret types but must not fall back to hard-cod
 - Use the configured upstream connect timeout and request timeout.
 - Enforce the configured maximum upstream response size before parsing provider payloads.
 - Do not retry non-idempotent capabilities unless the capability contract explicitly allows it.
-- Read-only capabilities may retry safe network failures once when the caller can tolerate duplicate reads.
+- Read-only capabilities may retry safe network failures, 429 responses and 5xx responses up to `UPSTREAM_READ_RETRY_ATTEMPTS` total attempts.
+- Side-effecting, destructive, draft and admin capabilities are not retried by default.
 - Always return a safe timeout or upstream error when retries are exhausted.
 
 ## Logging Rules
@@ -125,6 +126,15 @@ Adapters may reject incompatible secret types but must not fall back to hard-cod
 5. Add unit tests for success normalization and error mapping.
 6. Add integration tests with a mock upstream service.
 7. Update [PLAN.md](PLAN.md) if the adapter is part of an active milestone.
+
+## Capability Templates
+
+Built-in setup templates live in `src/grantora/adapters/templates.py` and are exposed through the Admin API:
+
+- `GET /v1/admin/capability-templates`
+- `POST /v1/admin/capabilities/from-template`
+
+Templates include capability ids, adapter ids, operations, JSON Schemas, required secret types and upstream permissions. They must not include base URLs, tokens, passwords, cookies or private provider configuration.
 
 ## First Adapter: NethVoice Phonebook Search
 
@@ -161,3 +171,46 @@ Rules:
 - Enforce maximum result limit from the capability input schema.
 - Return only `display_name`, `phone`, `company` and `source` unless the contract is updated.
 - Do not log contact payloads by default.
+- Required upstream permission: delegated phonebook/contact read access for the selected user or API key.
+- Health probing calls the same safe phonebook endpoint without credentials. A 401 or 403 means the upstream is reachable but credentials are required; 404, timeout, 429 and 5xx are mapped to safe health errors.
+- Provider payload fixtures are sanitized in `tests/unit/fixtures/nethvoice_phonebook_observed.json`; they must not contain real tokens, cookies, upstream secrets or private contact data.
+
+## Second Adapter: Nextcloud Files Search
+
+Capability id: `nextcloud.files.search`
+
+Input:
+
+```json
+{
+  "query": "report",
+  "limit": 10
+}
+```
+
+Output:
+
+```json
+{
+  "files": [
+    {
+      "path": "/Documents/Quarterly report.pdf",
+      "display_name": "Quarterly report.pdf",
+      "mime_type": "application/pdf",
+      "size": 4096,
+      "modified_at": "2024-06-01T12:00:00Z",
+      "source": "nextcloud"
+    }
+  ]
+}
+```
+
+Rules:
+
+- Read-only only.
+- Call the configured application `base_url` at `GET /ocs/v2.php/search/providers/files/search` with `term` and the enforced `limit`.
+- Send `OCS-APIRequest: true` and request JSON responses.
+- Support `basic_auth` secrets formatted as `username:app-password` and `bearer_token` secrets when the deployment supports bearer authentication.
+- Required upstream permissions: delegated file read/search access for the selected user. For typical Nextcloud deployments this means a user app password or equivalent credential with Files access.
+- Normalize only `path`, `display_name`, `mime_type`, `size`, `modified_at` and `source`; do not expose share metadata, owner details, raw WebDAV URLs, etags or preview links unless the contract is updated.
+- Health probing calls the OCS file search endpoint without credentials and maps unauthorized, unavailable and timeout responses safely.

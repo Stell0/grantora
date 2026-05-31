@@ -96,6 +96,11 @@ class Settings(BaseSettings):
         gt=0,
         validation_alias="UPSTREAM_MAX_RESPONSE_BYTES",
     )
+    upstream_read_retry_attempts: int = Field(
+        default=2,
+        gt=0,
+        validation_alias="UPSTREAM_READ_RETRY_ATTEMPTS",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

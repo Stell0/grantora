@@ -58,6 +58,11 @@
     "AdminCapabilityResponse": [
       "capability"
     ],
+    "AdminCapabilityTemplateListResponse": [
+      "limit",
+      "offset",
+      "templates"
+    ],
     "AdminPermissionListResponse": [
       "limit",
       "offset",

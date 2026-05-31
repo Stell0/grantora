@@ -1,0 +1,31 @@
+{
+  "ocs": {
+    "meta": {
+      "status": "ok",
+      "statuscode": 200,
+      "message": "OK"
+    },
+    "data": {
+      "entries": [
+        {
+          "title": "Quarterly report.pdf",
+          "resourceUrl": "https://cloud.example.test/remote.php/dav/files/alice/Documents/Quarterly%20report.pdf",
+          "attributes": {
+            "mime_type": "application/pdf",
+            "size": 4096,
+            "mtime": 1717243200
+          }
+        },
+        {
+          "title": "Roadmap.md",
+          "resourceUrl": "https://cloud.example.test/remote.php/dav/files/alice/Projects/Roadmap.md",
+          "attributes": {
+            "mime_type": "text/markdown",
+            "size": 1024,
+            "mtime": 1717329600
+          }
+        }
+      ]
+    }
+  }
+}

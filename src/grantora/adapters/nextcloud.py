@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 import httpx
 
@@ -9,15 +12,15 @@ from grantora.adapters.base import AdapterResult, HealthResult, InvocationContex
 from grantora.adapters.http import RetryPolicy, send_with_read_only_retries
 from grantora.db.models import ApplicationInstance, Capability
 
-DEFAULT_PHONEBOOK_SEARCH_PATH = "/api/phonebook/search"
-DEFAULT_PHONEBOOK_LIMIT = 50
+DEFAULT_FILES_SEARCH_PATH = "/ocs/v2.php/search/providers/files/search"
+DEFAULT_FILES_LIMIT = 50
 DEFAULT_MAX_RESPONSE_BYTES = 10_485_760
-NETHVOICE_SOURCE = "nethvoice"
+NEXTCLOUD_SOURCE = "nextcloud"
 
 
-class NethVoicePhonebookAdapter:
-    id = "nethvoice"
-    provider_type = "nethvoice"
+class NextcloudFilesAdapter:
+    id = "nextcloud"
+    provider_type = "nextcloud"
 
     def __init__(
         self,
@@ -27,8 +30,8 @@ class NethVoicePhonebookAdapter:
         max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
         verify: bool = True,
         transport: httpx.AsyncBaseTransport | None = None,
-        phonebook_search_path: str = DEFAULT_PHONEBOOK_SEARCH_PATH,
-        health_check_path: str | None = DEFAULT_PHONEBOOK_SEARCH_PATH,
+        files_search_path: str = DEFAULT_FILES_SEARCH_PATH,
+        health_check_path: str | None = DEFAULT_FILES_SEARCH_PATH,
         read_retry_attempts: int = 2,
     ) -> None:
         self._timeout_seconds = timeout_seconds
@@ -36,7 +39,7 @@ class NethVoicePhonebookAdapter:
         self._max_response_bytes = max_response_bytes
         self._verify = verify
         self._transport = transport
-        self._phonebook_search_path = phonebook_search_path
+        self._files_search_path = files_search_path
         self._health_check_path = health_check_path
         self._retry_policy = RetryPolicy(read_only_attempts=read_retry_attempts)
 
@@ -47,7 +50,7 @@ class NethVoicePhonebookAdapter:
         context: InvocationContext,
         secret: SecretMaterial,
     ) -> AdapterResult:
-        if capability.operation != "phonebook.search":
+        if capability.operation != "files.search":
             return AdapterResult.error(
                 "adapter_operation_unsupported",
                 "Capability operation is not supported by this adapter",
@@ -77,9 +80,13 @@ class NethVoicePhonebookAdapter:
 
             async def send() -> httpx.Response:
                 return await client.get(
-                    self._phonebook_search_path,
-                    headers=auth_headers,
-                    params={"query": query, "limit": limit},
+                    self._files_search_path,
+                    headers={
+                        **auth_headers,
+                        "Accept": "application/json",
+                        "OCS-APIRequest": "true",
+                    },
+                    params={"term": query, "limit": limit},
                 )
 
             response, request_error = await send_with_read_only_retries(
@@ -112,12 +119,12 @@ class NethVoicePhonebookAdapter:
         except ValueError:
             return _invalid_response(response.status_code)
 
-        contacts = _normalized_contacts(payload, limit)
-        if contacts is None:
+        files = _normalized_files(payload, limit)
+        if files is None:
             return _invalid_response(response.status_code)
 
         return AdapterResult.ok(
-            {"contacts": contacts},
+            {"files": files},
             upstream_status=response.status_code,
             safe_metadata={"provider_type": self.provider_type},
         )
@@ -140,7 +147,8 @@ class NethVoicePhonebookAdapter:
             ) as client:
                 response = await client.get(
                     self._health_check_path,
-                    params={"query": "", "limit": 1},
+                    headers={"Accept": "application/json", "OCS-APIRequest": "true"},
+                    params={"term": "", "limit": 1},
                 )
         except httpx.TimeoutException:
             return HealthResult(
@@ -163,7 +171,7 @@ class NethVoicePhonebookAdapter:
         if response.status_code == httpx.codes.NOT_FOUND:
             return HealthResult(
                 status="error",
-                safe_message="The upstream phonebook endpoint was not found",
+                safe_message="The upstream file search endpoint was not found",
             )
         if response.status_code == httpx.codes.TOO_MANY_REQUESTS:
             return HealthResult(
@@ -184,9 +192,10 @@ class NethVoicePhonebookAdapter:
 def _auth_headers(secret: SecretMaterial) -> dict[str, str] | None:
     if secret.secret_type == "bearer_token":
         return {"Authorization": f"Bearer {secret.value}"}
-    if secret.secret_type == "api_key":
-        return {"X-API-Key": secret.value}
-    return None
+    if secret.secret_type != "basic_auth" or ":" not in secret.value:
+        return None
+    encoded = base64.b64encode(secret.value.encode("utf-8")).decode("ascii")
+    return {"Authorization": f"Basic {encoded}"}
 
 
 def _requested_limit(input_data: Mapping[str, Any], input_schema: Mapping[str, Any]) -> int:
@@ -200,13 +209,13 @@ def _requested_limit(input_data: Mapping[str, Any], input_schema: Mapping[str, A
 def _schema_maximum_limit(input_schema: Mapping[str, Any]) -> int:
     properties = input_schema.get("properties", {})
     if not isinstance(properties, Mapping):
-        return DEFAULT_PHONEBOOK_LIMIT
+        return DEFAULT_FILES_LIMIT
     limit_schema = properties.get("limit", {})
     if not isinstance(limit_schema, Mapping):
-        return DEFAULT_PHONEBOOK_LIMIT
+        return DEFAULT_FILES_LIMIT
     maximum = limit_schema.get("maximum")
     if isinstance(maximum, bool) or not isinstance(maximum, int):
-        return DEFAULT_PHONEBOOK_LIMIT
+        return DEFAULT_FILES_LIMIT
     return max(maximum, 1)
 
 
@@ -223,7 +232,7 @@ def _error_result_from_response(response: httpx.Response) -> AdapterResult | Non
     if upstream_status == httpx.codes.NOT_FOUND:
         return AdapterResult.error(
             "upstream_not_found",
-            "The upstream phonebook endpoint was not found",
+            "The upstream file search endpoint was not found",
             upstream_status=upstream_status,
         )
     if upstream_status == httpx.codes.TOO_MANY_REQUESTS:
@@ -259,30 +268,32 @@ def _response_too_large(response: httpx.Response, max_response_bytes: int) -> bo
     return len(response.content) > max_response_bytes
 
 
-def _normalized_contacts(payload: Any, limit: int) -> list[dict[str, str]] | None:
-    raw_contacts = _extract_contact_items(payload)
-    if raw_contacts is None:
+def _normalized_files(payload: Any, limit: int) -> list[dict[str, Any]] | None:
+    raw_files = _extract_file_items(payload)
+    if raw_files is None:
         return None
 
-    contacts = []
-    for raw_contact in raw_contacts[:limit]:
-        contact = _normalized_contact(raw_contact)
-        if contact is None:
+    files = []
+    for raw_file in raw_files[:limit]:
+        file_item = _normalized_file(raw_file)
+        if file_item is None:
             return None
-        contacts.append(contact)
-    return contacts
+        files.append(file_item)
+    return files
 
 
-def _extract_contact_items(payload: Any) -> list[Mapping[str, Any]] | None:
+def _extract_file_items(payload: Any) -> list[Mapping[str, Any]] | None:
     raw_items: Any
     if isinstance(payload, list):
         raw_items = payload
     elif isinstance(payload, Mapping):
-        raw_items = _first_present(payload, "contacts", "results", "items")
+        raw_items = _items_from_ocs_payload(payload)
+        if raw_items is None:
+            raw_items = _first_present(payload, "files", "entries", "results", "items")
         if raw_items is None:
             data = payload.get("data")
             if isinstance(data, Mapping):
-                raw_items = _first_present(data, "contacts", "results", "items")
+                raw_items = _first_present(data, "files", "entries", "results", "items")
             else:
                 raw_items = data
     else:
@@ -295,96 +306,111 @@ def _extract_contact_items(payload: Any) -> list[Mapping[str, Any]] | None:
     return raw_items
 
 
+def _items_from_ocs_payload(payload: Mapping[str, Any]) -> Any:
+    ocs = payload.get("ocs")
+    if not isinstance(ocs, Mapping):
+        return None
+    data = ocs.get("data")
+    if isinstance(data, Mapping):
+        return _first_present(data, "entries", "files", "results", "items")
+    return data
+
+
+def _normalized_file(raw_file: Mapping[str, Any]) -> dict[str, Any] | None:
+    path = _file_path(raw_file)
+    display_name = _first_string(
+        raw_file,
+        "display_name",
+        "displayName",
+        "title",
+        "name",
+        "file_name",
+        "fileName",
+    )
+    if display_name is None and path is not None:
+        display_name = path.rstrip("/").rsplit("/", 1)[-1] or path
+    if path is None or display_name is None:
+        return None
+    return {
+        "path": path,
+        "display_name": display_name,
+        "mime_type": _file_string(raw_file, "mime_type", "mimeType", "mimetype", "content_type")
+        or "",
+        "size": _file_int(raw_file, "size", "bytes", "file_size", "fileSize"),
+        "modified_at": _modified_at(raw_file),
+        "source": NEXTCLOUD_SOURCE,
+    }
+
+
+def _file_path(raw_file: Mapping[str, Any]) -> str | None:
+    path = _file_string(raw_file, "path", "file_path", "filePath", "dav_path", "davPath")
+    if path is not None:
+        return _normalize_path(path)
+    resource_url = _file_string(raw_file, "resourceUrl", "resource_url", "url", "link", "href")
+    if resource_url is None:
+        return None
+    return _normalize_path(resource_url)
+
+
+def _normalize_path(value: str) -> str | None:
+    parsed = urlparse(value)
+    path = unquote(parsed.path if parsed.scheme else value)
+    marker = "/remote.php/dav/files/"
+    if marker in path:
+        path = path.split(marker, 1)[1]
+        path = path.split("/", 1)[1] if "/" in path else ""
+    if not path.startswith("/"):
+        path = f"/{path}"
+    return path or "/"
+
+
+def _modified_at(raw_file: Mapping[str, Any]) -> str | None:
+    value = _file_value(raw_file, "modified_at", "modifiedAt", "last_modified", "mtime")
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return datetime.fromtimestamp(value, UTC).isoformat().replace("+00:00", "Z")
+    if isinstance(value, str):
+        value = value.strip()
+        if value:
+            return value
+    return None
+
+
+def _file_string(raw_file: Mapping[str, Any], *keys: str) -> str | None:
+    value = _file_value(raw_file, *keys)
+    if isinstance(value, str):
+        normalized = value.strip()
+        if normalized:
+            return normalized
+    return None
+
+
+def _file_int(raw_file: Mapping[str, Any], *keys: str) -> int | None:
+    value = _file_value(raw_file, *keys)
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def _file_value(raw_file: Mapping[str, Any], *keys: str) -> Any:
+    value = _first_present(raw_file, *keys)
+    if value is not None:
+        return value
+    attributes = raw_file.get("attributes")
+    if isinstance(attributes, Mapping):
+        return _first_present(attributes, *keys)
+    return None
+
+
 def _first_present(payload: Mapping[str, Any], *keys: str) -> Any:
     for key in keys:
         if key in payload:
             return payload[key]
-    return None
-
-
-def _normalized_contact(raw_contact: Mapping[str, Any]) -> dict[str, str] | None:
-    display_name = _display_name(raw_contact)
-    phone = _phone_number(raw_contact)
-    if display_name is None or phone is None:
-        return None
-    return {
-        "display_name": display_name,
-        "phone": phone,
-        "company": _first_string(
-            raw_contact,
-            "company",
-            "company_name",
-            "companyName",
-            "organization",
-            "organisation",
-            "org",
-        )
-        or "",
-        "source": NETHVOICE_SOURCE,
-    }
-
-
-def _display_name(raw_contact: Mapping[str, Any]) -> str | None:
-    display_name = _first_string(
-        raw_contact,
-        "display_name",
-        "displayName",
-        "full_name",
-        "fullName",
-        "fullname",
-        "name",
-    )
-    if display_name is not None:
-        return display_name
-    name_parts = [
-        value
-        for value in (
-            _first_string(raw_contact, "first_name", "firstName", "given_name", "givenName"),
-            _first_string(raw_contact, "last_name", "lastName", "family_name", "familyName"),
-        )
-        if value is not None
-    ]
-    if name_parts:
-        return " ".join(name_parts)
-    return None
-
-
-def _phone_number(raw_contact: Mapping[str, Any]) -> str | None:
-    phone = _first_string(
-        raw_contact,
-        "phone",
-        "phone_number",
-        "phoneNumber",
-        "number",
-        "mobile",
-        "mobile_phone",
-        "mobilePhone",
-        "telephone",
-        "extension",
-    )
-    if phone is not None:
-        return phone
-
-    for key in ("phones", "phone_numbers", "phoneNumbers", "numbers"):
-        value = raw_contact.get(key)
-        phone = _phone_from_sequence(value)
-        if phone is not None:
-            return phone
-    return None
-
-
-def _phone_from_sequence(value: Any) -> str | None:
-    if not isinstance(value, list):
-        return None
-    for phone_entry in value:
-        if isinstance(phone_entry, str):
-            phone = phone_entry.strip()
-            if phone:
-                return phone
-        if isinstance(phone_entry, Mapping):
-            phone = _first_string(phone_entry, "number", "phone", "value")
-            if phone is not None:
-                return phone
     return None
 
 

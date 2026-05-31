@@ -36,7 +36,9 @@ make test-integration
 make test-e2e
 ```
 
-Integration and e2e tests skip unless the documented `GRANTORA_INTEGRATION_*` or `GRANTORA_RUN_E2E=1` environment variables are set.
+Integration and e2e tests skip external infrastructure checks unless the documented `GRANTORA_INTEGRATION_*` or `GRANTORA_RUN_E2E=1` environment variables are set. Provider adapter integration tests use mock `httpx` transports and do not contact real upstream services.
+
+Supported real provider templates currently include `nethvoice.phonebook.search` and `nextcloud.files.search`. Admins can list templates with `GET /v1/admin/capability-templates` and create a capability with `POST /v1/admin/capabilities/from-template`.
 
 Useful local URLs:
 
@@ -53,4 +55,4 @@ Useful local URLs:
 
 ## Development Status
 
-Status: Milestone 10 bootstrap, seeding and human workflow implemented. See [PLAN.md](PLAN.md) for the current roadmap status.
+Status: Milestone 12 adapter expansion and provider readiness implemented. See [PLAN.md](PLAN.md) for the current roadmap status.

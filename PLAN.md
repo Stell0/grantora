@@ -41,7 +41,7 @@ Assessed on 2026-05-31 against `src/grantora/`, `tests/unit/`, `CONTRACTS.md`, `
 - [x] The Docker image runs Alembic migrations before Uvicorn when `MIGRATIONS_AUTO_RUN=true`. Test: entrypoint tests cover enabled, disabled and invalid values.
 - [ ] `.env.example` contains future variables not present in `Settings`. Test: environment reference test or docs check keeps `.env.example`, `Settings` and this plan aligned.
 - [x] The bootstrap path is packaged as `make demo-seed` plus `make smoke` through compose and APISIX. Test: workflow and smoke unit tests cover idempotent seeding and failing checks; full compose remains a manual/e2e check.
-- [ ] Only NethVoice phonebook is implemented as a real adapter. Test: each new adapter gets unit normalization/error mapping tests and integration tests with a mock upstream.
+- [x] NethVoice phonebook and Nextcloud files search are implemented as real adapters. Test: each real adapter has unit normalization/error mapping tests and integration tests with mock upstream transports.
 - [ ] MCP tool listing is an internal generator only. Test: expose and verify the final agent-facing MCP transport or endpoint selected for product use.
 - [ ] No production CI, release packaging, image publishing, SBOM, dependency scan or NS8 module packaging is defined yet. Test: release pipeline creates reproducible artifacts and runs all gates.
 
@@ -90,7 +90,7 @@ Goal: finish runtime endpoints and lifecycle controls expected by agents and ope
 - [x] Add deterministic permission seeding for `capability.describe`, `capability.invoke.read_only`, `capability.invoke.side_effect` and `capability.invoke.destructive`. Test: migrations or startup seed are idempotent.
 - [x] Make `admin` risk capabilities unavailable to runtime agents unless a future explicit contract is approved. Test: admin-risk capability cannot be discovered or invoked through runtime APIs.
 - [x] Add response pagination where lists can grow: capabilities, audit, usage and admin resources. Test: cursor or limit/offset behavior is stable and bounded.
-- [x] output git commands to add files and commit changes using a conventional commit 
+- [x] output git commands to add files and commit changes using a conventional commit
 
 ## Milestone 10 - Bootstrap, Seeding And Human Workflow
 
@@ -120,13 +120,13 @@ Goal: prove the product works with real infrastructure, not only SQLite and in-m
 
 Goal: move from one real capability to a reusable multi-application gateway.
 
-- [ ] Validate NethVoice phonebook against the real provider API contract and document required upstream permissions. Test: mock upstream fixtures match observed provider payloads without storing secrets.
-- [ ] Add NethVoice adapter health check behavior beyond base URL presence when a safe endpoint exists. Test: health maps unavailable/unauthorized responses safely.
-- [ ] Add a second provider adapter, preferably `nextcloud.files.search` or the next highest-priority NS8 application. Test: success normalization, empty results, limit enforcement, 401/403, 404, timeout, 429, 5xx and invalid payload.
-- [ ] Add adapter integration tests with mock upstream containers or `httpx` transports for every real provider. Test: no network access to real services is required in CI.
-- [ ] Add adapter capability templates or registry metadata for common setup. Test: admin can instantiate a documented capability without hand-writing fragile JSON.
-- [ ] Add retry policy support for safe read-only operations only. Test: read-only retries are bounded, and side-effect/destructive operations are not retried by default.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] Validate NethVoice phonebook against the real provider API contract and document required upstream permissions. Test: mock upstream fixtures match observed provider payloads without storing secrets.
+- [x] Add NethVoice adapter health check behavior beyond base URL presence when a safe endpoint exists. Test: health maps unavailable/unauthorized responses safely.
+- [x] Add a second provider adapter, preferably `nextcloud.files.search` or the next highest-priority NS8 application. Test: success normalization, empty results, limit enforcement, 401/403, 404, timeout, 429, 5xx and invalid payload.
+- [x] Add adapter integration tests with mock upstream containers or `httpx` transports for every real provider. Test: no network access to real services is required in CI.
+- [x] Add adapter capability templates or registry metadata for common setup. Test: admin can instantiate a documented capability without hand-writing fragile JSON.
+- [x] Add retry policy support for safe read-only operations only. Test: read-only retries are bounded, and side-effect/destructive operations are not retried by default.
+- [x] List git commands to add files and commit changes using a conventional commit.
 
 ## Milestone 13 - MCP And Agent Tooling
 
@@ -260,10 +260,11 @@ These variables are read by the current `Settings` class or the current compose 
 | `METRICS_ENABLED` | Enables `/metrics` | `true` | Metrics path is currently fixed at `/metrics`. |
 | `REQUEST_ID_HEADER` | Header used for request id propagation | `X-Request-Id` | Included in responses. |
 | `DEFAULT_REQUEST_TIMEOUT_SECONDS` | Reserved/default request timeout setting | `30` | Present in settings; not broadly enforced yet. |
-| `UPSTREAM_TIMEOUT_SECONDS` | Adapter request timeout | `30` | Used by NethVoice adapter registry. |
-| `UPSTREAM_CONNECT_TIMEOUT_SECONDS` | Adapter connect timeout | `5` | Used by NethVoice adapter registry. |
-| `UPSTREAM_TLS_VERIFY` | Verify upstream TLS certificates | `true` | Used by NethVoice adapter. |
-| `UPSTREAM_MAX_RESPONSE_BYTES` | Maximum upstream response size | `10485760` | Used by NethVoice adapter. |
+| `UPSTREAM_TIMEOUT_SECONDS` | Adapter request timeout | `30` | Used by NethVoice and Nextcloud adapters. |
+| `UPSTREAM_CONNECT_TIMEOUT_SECONDS` | Adapter connect timeout | `5` | Used by NethVoice and Nextcloud adapters. |
+| `UPSTREAM_TLS_VERIFY` | Verify upstream TLS certificates | `true` | Used by NethVoice and Nextcloud adapters. |
+| `UPSTREAM_MAX_RESPONSE_BYTES` | Maximum upstream response size | `10485760` | Used by NethVoice and Nextcloud adapters. |
+| `UPSTREAM_READ_RETRY_ATTEMPTS` | Maximum total attempts for retryable read-only adapter calls | `2` | Side-effecting, destructive, draft and admin capabilities are not retried by default. |
 
 ### Reserved Or Planned Variables
 

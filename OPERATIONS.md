@@ -18,7 +18,7 @@ Required groups:
 - Local workflow helpers: `ADMIN_BOOTSTRAP_TOKEN`, `GRANTORA_API_URL`, `GRANTORA_RUNTIME_URL` and optional `DEMO_*` values used by `make demo-seed` and `make smoke`.
 - APISIX: public URL, Admin API URL, Admin API key and sync settings.
 - Observability: metrics, audit retention, usage retention and request id header.
-- Upstream defaults: timeouts, TLS verification and response size limit.
+- Upstream defaults: timeouts, TLS verification, response size limit and read-only retry attempts.
 
 Agent and admin bootstrap token hashes use the `hmac-sha256:<hex>` format. Generate the admin bootstrap hash with the same token pepper that the service will receive at runtime. The plaintext `ADMIN_BOOTSTRAP_TOKEN` is for local operator commands only; it is not passed to `grantora-api` by the compose file.
 
@@ -135,6 +135,38 @@ make test-e2e
 ```
 
 The e2e suite seeds a unique demo workspace through Admin APIs, syncs APISIX, verifies discovery and invocation through `http://localhost:9080`, and checks that denied, missing-secret and upstream-error attempts have audit and usage records.
+
+Provider adapter integration tests use sanitized mock upstream payloads and `httpx` transports, so they do not require network access to NethVoice or Nextcloud.
+
+## Provider Capability Templates
+
+Grantora ships built-in capability templates for common real adapters:
+
+- `nethvoice.phonebook.search`
+- `nextcloud.files.search`
+
+List templates:
+
+```bash
+curl -sS 'http://localhost:8080/v1/admin/capability-templates' \
+  -H "Authorization: Bearer $ADMIN_BOOTSTRAP_TOKEN"
+```
+
+Create a capability from a template after creating the matching application instance:
+
+```bash
+curl -sS -X POST http://localhost:8080/v1/admin/capabilities/from-template \
+  -H "Authorization: Bearer $ADMIN_BOOTSTRAP_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "template_id": "nextcloud.files.search",
+    "workspace_id": "<workspace-id>",
+    "application_instance_id": "<nextcloud-application-id>",
+    "id": "nextcloud.files.search.demo"
+  }'
+```
+
+Templates include JSON Schemas, adapter ids, required secret types and required upstream permissions. They never include provider base URLs, tokens or passwords.
 
 ## APISIX Bootstrap
 

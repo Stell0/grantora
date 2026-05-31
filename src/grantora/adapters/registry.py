@@ -22,9 +22,12 @@ class AdapterRegistry:
 def create_default_adapter_registry(settings: Settings | None = None) -> AdapterRegistry:
     from grantora.adapters.mock import MockAdapter
     from grantora.adapters.nethvoice import NethVoicePhonebookAdapter
+    from grantora.adapters.nextcloud import NextcloudFilesAdapter
 
     if settings is None:
-        return AdapterRegistry([MockAdapter(), NethVoicePhonebookAdapter()])
+        return AdapterRegistry(
+            [MockAdapter(), NethVoicePhonebookAdapter(), NextcloudFilesAdapter()]
+        )
     return AdapterRegistry(
         [
             MockAdapter(),
@@ -33,6 +36,14 @@ def create_default_adapter_registry(settings: Settings | None = None) -> Adapter
                 connect_timeout_seconds=settings.upstream_connect_timeout_seconds,
                 max_response_bytes=settings.upstream_max_response_bytes,
                 verify=settings.upstream_tls_verify,
+                read_retry_attempts=settings.upstream_read_retry_attempts,
+            ),
+            NextcloudFilesAdapter(
+                timeout_seconds=settings.upstream_timeout_seconds,
+                connect_timeout_seconds=settings.upstream_connect_timeout_seconds,
+                max_response_bytes=settings.upstream_max_response_bytes,
+                verify=settings.upstream_tls_verify,
+                read_retry_attempts=settings.upstream_read_retry_attempts,
             ),
         ]
     )

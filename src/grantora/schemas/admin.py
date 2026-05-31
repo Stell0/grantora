@@ -143,6 +143,37 @@ class AdminCapabilityListResponse(BaseModel):
     offset: int
 
 
+class CapabilityTemplateAdminSummary(BaseModel):
+    id: str
+    name: str
+    version: int
+    provider_type: str
+    adapter: str
+    operation: str
+    auth_mode: str
+    risk_class: str
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any]
+    required_secret_types: list[str]
+    upstream_permissions: list[str]
+
+
+class AdminCapabilityTemplateListResponse(BaseModel):
+    templates: list[CapabilityTemplateAdminSummary]
+    limit: int
+    offset: int
+
+
+class AdminCapabilityFromTemplateRequest(BaseModel):
+    template_id: str = Field(min_length=1, max_length=128)
+    workspace_id: UUID
+    application_instance_id: UUID
+    id: str | None = Field(default=None, min_length=1, max_length=128)
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    version: int | None = Field(default=None, ge=1)
+    status: LifecycleStatus = "active"
+
+
 class PermissionAdminSummary(BaseModel):
     code: str
     description: str | None

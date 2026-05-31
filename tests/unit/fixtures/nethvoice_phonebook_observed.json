@@ -1,0 +1,23 @@
+{
+  "data": {
+    "results": [
+      {
+        "fullname": "Mario Rossi",
+        "phone_numbers": [
+          {
+            "type": "work",
+            "value": "+3900112233"
+          }
+        ],
+        "companyName": "Acme SRL",
+        "email": "mario.rossi@example.test"
+      },
+      {
+        "firstName": "Maria",
+        "lastName": "Bianchi",
+        "mobilePhone": "+3900445566",
+        "organization": "Beta SPA"
+      }
+    ]
+  }
+}

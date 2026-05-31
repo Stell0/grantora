@@ -121,6 +121,7 @@ Every adapter must include:
 - Upstream 5xx mapping test
 - Invalid upstream payload mapping test
 - No-secret-in-log assertion when log capture is practical
+- Mock upstream transport coverage for each real provider adapter, with sanitized fixtures and no network access to real services
 
 ## Contract Tests
 

@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from grantora.adapters.templates import get_capability_template, list_capability_templates
 from grantora.api.errors import GrantoraAPIError, get_request_id
 from grantora.apisix import (
     ApisixAdminClient,
@@ -55,8 +56,10 @@ from grantora.schemas import (
     AdminBindingListResponse,
     AdminBindingResponse,
     AdminCapabilityCreateRequest,
+    AdminCapabilityFromTemplateRequest,
     AdminCapabilityListResponse,
     AdminCapabilityResponse,
+    AdminCapabilityTemplateListResponse,
     AdminLifecycleStatusUpdateRequest,
     AdminPermissionCreateRequest,
     AdminPermissionListResponse,
@@ -83,6 +86,7 @@ from grantora.schemas import (
     AuditEventAdminSummary,
     BindingAdminSummary,
     CapabilityAdminSummary,
+    CapabilityTemplateAdminSummary,
     PermissionAdminSummary,
     RoleAdminSummary,
     SecretAdminSummary,
@@ -303,6 +307,89 @@ def create_capability(
         risk_class=payload.risk_class,
         input_schema=payload.input_schema,
         output_schema=payload.output_schema,
+        status=payload.status,
+    )
+    session.add(capability)
+    _flush_or_conflict(session, "capability_conflict", "Capability could not be created")
+    _record_admin_audit_event(
+        session,
+        request,
+        workspace_id=workspace.id,
+        application_instance_id=application.id,
+        capability_id=capability.id,
+    )
+    _commit_or_conflict(session, "capability_conflict", "Capability could not be created")
+    return AdminCapabilityResponse(capability=CapabilityAdminSummary.model_validate(capability))
+
+
+@router.get("/capability-templates", response_model=AdminCapabilityTemplateListResponse)
+def list_admin_capability_templates(
+    _admin: AdminBootstrap,
+    provider_type: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+) -> AdminCapabilityTemplateListResponse:
+    templates = list_capability_templates(provider_type)
+    return AdminCapabilityTemplateListResponse(
+        templates=[
+            CapabilityTemplateAdminSummary(**template.as_dict())
+            for template in templates[offset : offset + limit]
+        ],
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post(
+    "/capabilities/from-template",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AdminCapabilityResponse,
+)
+def create_capability_from_template(
+    payload: AdminCapabilityFromTemplateRequest,
+    request: Request,
+    _admin: AdminBootstrap,
+    session: DatabaseSession,
+) -> AdminCapabilityResponse:
+    template = get_capability_template(payload.template_id)
+    if template is None:
+        raise GrantoraAPIError(
+            status.HTTP_404_NOT_FOUND,
+            "capability_template_not_found",
+            "Capability template was not found",
+        )
+    workspace = _get_active_workspace_or_404(session, payload.workspace_id)
+    application = _get_active_application_or_404(session, payload.application_instance_id)
+    if application.workspace_id != workspace.id:
+        raise GrantoraAPIError(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "application_workspace_mismatch",
+            "Application does not belong to the workspace",
+        )
+    if application.provider_type != template.provider_type:
+        raise GrantoraAPIError(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "application_provider_mismatch",
+            "Application provider does not match the capability template",
+        )
+
+    template_data = template.as_dict()
+    _check_capability_schema(template_data["input_schema"])
+    _check_capability_schema(template_data["output_schema"])
+
+    capability = Capability(
+        id=payload.id or template.id,
+        workspace=workspace,
+        application_instance=application,
+        name=payload.name or template.name,
+        version=payload.version or template.version,
+        provider_type=template.provider_type,
+        adapter=template.adapter,
+        operation=template.operation,
+        auth_mode=template.auth_mode,
+        risk_class=template.risk_class,
+        input_schema=template_data["input_schema"],
+        output_schema=template_data["output_schema"],
         status=payload.status,
     )
     session.add(capability)
