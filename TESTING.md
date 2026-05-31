@@ -17,6 +17,9 @@ make demo-seed
 make smoke
 make retention RETENTION_FLAGS=--dry-run
 make backup-restore-smoke
+make security-scan
+make sbom
+make container-scan IMAGE=grantora-api:security
 ```
 
 Until the Makefile exists, use direct tool commands such as `pytest`, `ruff check`, `ruff format --check` and `alembic upgrade head`.
@@ -42,6 +45,9 @@ Required areas:
 - Adapter result normalization
 - Adapter error mapping
 - Standard error response formatting
+- Oversized request body rejection before admin/runtime handlers
+- Strong identifier, URL and capability schema validation
+- Scoped DB-backed admin credentials and optional OIDC admin subjects
 - Metrics endpoint exposure and counter increments
 - Structured JSON request logs without authorization headers or secrets
 - Structured JSON runtime decision logs for denied and failed invocation paths
@@ -110,12 +116,17 @@ agent cannot act for another user
 agent cannot invoke disabled capability
 secret is not returned in responses
 secret is not written to logs
+invalid PostgreSQL secret ciphertext fails closed
+external secret reference fails closed when no backend is configured
 denied request is audited
 successful request is audited
 usage counter is written
 adapter error is normalized
 APISIX route reconciliation is idempotent
 raw upstream path passthrough is unavailable by default
+SSRF-prone upstream base URLs are rejected
+oversized request bodies are rejected safely
+dependency audit, SBOM and container scan artifacts are generated for release candidates
 ```
 
 ## Adapter Tests

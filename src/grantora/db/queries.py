@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, undefer
 
 from grantora.db.models import (
     ACTIVE_STATUS,
+    AdminCredential,
     Agent,
     ApplicationInstance,
     Binding,
@@ -61,6 +62,22 @@ def get_active_agent_by_token_hash(session: Session, token_hash: str) -> Agent |
             Agent.token_hash == token_hash,
             Agent.status == ACTIVE_STATUS,
             Workspace.status == ACTIVE_STATUS,
+        )
+    )
+    return session.scalar(statement)
+
+
+def get_active_admin_credential_by_token_hash(
+    session: Session,
+    token_hash: str,
+) -> AdminCredential | None:
+    statement = (
+        select(AdminCredential)
+        .outerjoin(AdminCredential.workspace)
+        .where(
+            AdminCredential.token_hash == token_hash,
+            AdminCredential.status == ACTIVE_STATUS,
+            or_(AdminCredential.workspace_id.is_(None), Workspace.status == ACTIVE_STATUS),
         )
     )
     return session.scalar(statement)

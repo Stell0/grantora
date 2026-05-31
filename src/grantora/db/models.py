@@ -67,6 +67,32 @@ class Workspace(Base):
         back_populates="workspace",
         cascade="all, delete-orphan",
     )
+    admin_credentials: Mapped[list[AdminCredential]] = relationship(
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+    )
+
+
+class AdminCredential(Base):
+    __tablename__ = "admin_credentials"
+    __table_args__ = (
+        UniqueConstraint("subject", name="uq_admin_credentials_subject"),
+        UniqueConstraint("token_hash", name="uq_admin_credentials_token_hash"),
+        Index("idx_admin_credentials_token_hash_status", "token_hash", "status"),
+        Index("idx_admin_credentials_workspace_status", "workspace_id", "status"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    token_hash_algorithm: Mapped[str] = mapped_column(String(64), nullable=False)
+    workspace_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("workspaces.id"),
+    )
+    status: Mapped[str] = mapped_column(String(32), default=ACTIVE_STATUS, nullable=False)
+
+    workspace: Mapped[Workspace | None] = relationship(back_populates="admin_credentials")
 
 
 class ApplicationInstance(Base):

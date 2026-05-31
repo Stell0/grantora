@@ -4,7 +4,18 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from grantora.schemas.validation import (
+    AdapterId,
+    CapabilityId,
+    ExternalId,
+    OperationId,
+    PermissionCode,
+    ProviderType,
+    Slug,
+    UpstreamBaseURL,
+)
 
 LifecycleStatus = Literal["active", "disabled"]
 SecretStatus = Literal["active", "revoked"]
@@ -26,7 +37,7 @@ class WorkspaceAdminSummary(BaseModel):
 
 
 class AdminWorkspaceCreateRequest(BaseModel):
-    slug: str = Field(min_length=1, max_length=64)
+    slug: Slug
     display_name: str = Field(min_length=1, max_length=255)
     status: LifecycleStatus = "active"
 
@@ -55,10 +66,10 @@ class ApplicationAdminSummary(BaseModel):
 
 class AdminApplicationCreateRequest(BaseModel):
     workspace_id: UUID
-    slug: str = Field(min_length=1, max_length=64)
+    slug: Slug
     display_name: str = Field(min_length=1, max_length=255)
-    provider_type: str = Field(min_length=1, max_length=64)
-    base_url: str | None = Field(default=None, max_length=2048)
+    provider_type: ProviderType
+    base_url: UpstreamBaseURL | None = None
     status: LifecycleStatus = "active"
 
 
@@ -84,7 +95,7 @@ class UserAdminSummary(BaseModel):
 
 class AdminUserCreateRequest(BaseModel):
     workspace_id: UUID
-    external_id: str = Field(min_length=1, max_length=128)
+    external_id: ExternalId
     display_name: str = Field(min_length=1, max_length=255)
     status: LifecycleStatus = "active"
 
@@ -118,14 +129,14 @@ class CapabilityAdminSummary(BaseModel):
 
 
 class AdminCapabilityCreateRequest(BaseModel):
-    id: str = Field(min_length=1, max_length=128)
+    id: CapabilityId
     workspace_id: UUID
     application_instance_id: UUID
     name: str = Field(min_length=1, max_length=255)
     version: int = Field(default=1, ge=1)
-    provider_type: str = Field(min_length=1, max_length=64)
-    adapter: str = Field(min_length=1, max_length=64)
-    operation: str = Field(min_length=1, max_length=128)
+    provider_type: ProviderType
+    adapter: AdapterId
+    operation: OperationId
     auth_mode: AuthMode
     risk_class: RiskClass
     input_schema: dict[str, Any]
@@ -165,10 +176,10 @@ class AdminCapabilityTemplateListResponse(BaseModel):
 
 
 class AdminCapabilityFromTemplateRequest(BaseModel):
-    template_id: str = Field(min_length=1, max_length=128)
+    template_id: CapabilityId
     workspace_id: UUID
     application_instance_id: UUID
-    id: str | None = Field(default=None, min_length=1, max_length=128)
+    id: CapabilityId | None = None
     name: str | None = Field(default=None, min_length=1, max_length=255)
     version: int | None = Field(default=None, ge=1)
     status: LifecycleStatus = "active"
@@ -182,7 +193,7 @@ class PermissionAdminSummary(BaseModel):
 
 
 class AdminPermissionCreateRequest(BaseModel):
-    code: str = Field(min_length=1, max_length=128)
+    code: PermissionCode
     description: str | None = Field(default=None, max_length=255)
 
 
@@ -207,9 +218,9 @@ class RoleAdminSummary(BaseModel):
 
 class AdminRoleCreateRequest(BaseModel):
     workspace_id: UUID
-    slug: str = Field(min_length=1, max_length=64)
+    slug: Slug
     display_name: str = Field(min_length=1, max_length=255)
-    permission_codes: list[str] = Field(default_factory=list)
+    permission_codes: list[PermissionCode] = Field(default_factory=list)
     status: LifecycleStatus = "active"
 
 
@@ -239,7 +250,7 @@ class AdminBindingCreateRequest(BaseModel):
     workspace_id: UUID
     agent_id: UUID
     user_id: UUID
-    capability_id: str = Field(min_length=1, max_length=128)
+    capability_id: CapabilityId
     role_id: UUID
     status: LifecycleStatus = "active"
 
@@ -272,7 +283,14 @@ class AdminSecretCreateRequest(BaseModel):
     owner_type: OwnerType
     owner_id: UUID
     secret_type: SecretType
-    value: str = Field(min_length=1)
+    value: str | None = Field(default=None, min_length=1)
+    external_reference: str | None = Field(default=None, min_length=1, max_length=512)
+
+    @model_validator(mode="after")
+    def require_one_secret_source(self) -> AdminSecretCreateRequest:
+        if (self.value is None) == (self.external_reference is None):
+            raise ValueError("provide exactly one of value or external_reference")
+        return self
 
 
 class AdminLifecycleStatusUpdateRequest(BaseModel):
@@ -284,8 +302,15 @@ class AdminSecretStatusUpdateRequest(BaseModel):
 
 
 class AdminSecretRotateRequest(BaseModel):
-    value: str = Field(min_length=1)
+    value: str | None = Field(default=None, min_length=1)
+    external_reference: str | None = Field(default=None, min_length=1, max_length=512)
     secret_type: SecretType | None = None
+
+    @model_validator(mode="after")
+    def require_one_secret_source(self) -> AdminSecretRotateRequest:
+        if (self.value is None) == (self.external_reference is None):
+            raise ValueError("provide exactly one of value or external_reference")
+        return self
 
 
 class AdminSecretResponse(BaseModel):

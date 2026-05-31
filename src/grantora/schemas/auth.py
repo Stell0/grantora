@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from grantora.schemas.validation import Slug
+
 LifecycleStatus = Literal["active", "disabled"]
 
 
@@ -37,7 +39,7 @@ class MeResponse(BaseModel):
 
 class AdminAgentCreateRequest(BaseModel):
     workspace_id: UUID
-    slug: str = Field(min_length=1, max_length=64)
+    slug: Slug
     display_name: str = Field(min_length=1, max_length=255)
 
 

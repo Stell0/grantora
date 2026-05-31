@@ -22,16 +22,20 @@ An authenticated agent is not automatically allowed to act for any user. Runtime
 
 ## Admin Authentication
 
-- MVP admin access uses an environment-provided bootstrap token hash.
-- The bootstrap token hash uses the same `hmac-sha256:<hex>` peppered hash format as agent tokens.
+- Bootstrap admin access uses an environment-provided token hash.
+- Bootstrap and DB-backed admin token hashes use the same `hmac-sha256:<hex>` peppered hash format as agent tokens.
+- DB-backed admin credentials may be super-admin credentials or scoped to one workspace. Scoped admins must not read, create or mutate resources outside their workspace.
+- Optional OIDC/NS8 admin identity is disabled by default. When enabled, Grantora accepts only explicitly allowlisted subjects from the configured trusted subject header.
 - Admin endpoints are separate from runtime agent endpoints.
+- Agent bearer tokens are not admin tokens and must fail admin authentication.
 - Admin changes to security-relevant objects must create audit records.
-- Future OIDC or NS8 integration must preserve the same authorization checks.
+- OIDC or NS8 integration must preserve the same authorization checks and must be deployed behind a trusted component that strips spoofed identity headers.
 
 ## Secret Encryption
 
 - Encrypt upstream secrets before storing them in PostgreSQL.
 - Keep encryption keys only in environment variables or a future external secret backend.
+- External secret references may be stored only as encrypted markers. If the external backend is disabled or cannot resolve the marker, invocation fails closed with a safe secret error.
 - Decrypt secrets only in memory during invocation.
 - Never return upstream secrets through runtime or admin APIs.
 - Never log decrypted secrets, ciphertext values, authorization headers, cookies or refresh tokens.
@@ -101,6 +105,9 @@ Logs should include request id, workspace id, agent id, user id, capability id, 
 ## Unsafe Patterns
 
 - Never allow raw upstream path passthrough by default.
+- Never allow capability schemas that accept arbitrary upstream URLs, paths, methods, headers or raw bodies by default.
+- Never accept upstream application base URLs pointing at localhost, private addresses, bare hostnames or URL paths.
+- Never process request bodies larger than the configured `MAX_REQUEST_BODY_BYTES` limit.
 - Never trust `user` from a request without checking binding.
 - Never skip audit on denied requests.
 - Never let APISIX replace Grantora business authorization.
@@ -139,3 +146,5 @@ Primary mitigations:
 - Mandatory audit and usage records.
 - PostgreSQL desired state for APISIX routes.
 - Environment-only static configuration.
+- Bounded request bodies and constrained identifiers, URLs and JSON schemas.
+- Release security gates for dependency audit, SBOM generation and container vulnerability scanning.

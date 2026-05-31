@@ -614,6 +614,126 @@ def test_default_permissions_seed_idempotently(api_context: APIContext) -> None:
     assert second_response.json() == first_response.json()
 
 
+def test_admin_rejects_malformed_security_sensitive_inputs(api_context: APIContext) -> None:
+    invalid_slug = api_context.client.post(
+        "/v1/admin/workspaces",
+        headers=authorization_headers("admin-token"),
+        json={"slug": "Acme", "display_name": "Acme"},
+    )
+    workspace = post_admin(
+        api_context,
+        "/v1/admin/workspaces",
+        {"slug": "secure-acme", "display_name": "Secure Acme"},
+    )["workspace"]
+    ssrf_url = api_context.client.post(
+        "/v1/admin/applications",
+        headers=authorization_headers("admin-token"),
+        json={
+            "workspace_id": workspace["id"],
+            "slug": "internal-app",
+            "display_name": "Internal App",
+            "provider_type": "mock",
+            "base_url": "http://127.0.0.1:8080",
+        },
+    )
+    malformed_url = api_context.client.post(
+        "/v1/admin/applications",
+        headers=authorization_headers("admin-token"),
+        json={
+            "workspace_id": workspace["id"],
+            "slug": "path-app",
+            "display_name": "Path App",
+            "provider_type": "mock",
+            "base_url": "https://mock.example.test/provider/raw",
+        },
+    )
+
+    assert invalid_slug.status_code == 422
+    assert invalid_slug.json()["error"]["code"] == "request_validation_failed"
+    assert ssrf_url.status_code == 422
+    assert ssrf_url.json()["error"]["code"] == "request_validation_failed"
+    assert malformed_url.status_code == 422
+    assert malformed_url.json()["error"]["code"] == "request_validation_failed"
+
+
+def test_admin_rejects_raw_upstream_passthrough_capabilities(api_context: APIContext) -> None:
+    workspace = post_admin(
+        api_context,
+        "/v1/admin/workspaces",
+        {"slug": "raw-acme", "display_name": "Raw Acme"},
+    )["workspace"]
+    application = post_admin(
+        api_context,
+        "/v1/admin/applications",
+        {
+            "workspace_id": workspace["id"],
+            "slug": "mock-app",
+            "display_name": "Mock App",
+            "provider_type": "mock",
+            "base_url": "https://mock.example.test",
+        },
+    )["application"]
+
+    response = api_context.client.post(
+        "/v1/admin/capabilities",
+        headers=authorization_headers("admin-token"),
+        json={
+            **capability_payload(UUID(workspace["id"]), UUID(application["id"])),
+            "id": "mock.raw.request",
+            "operation": "http.get",
+            "input_schema": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"] == {
+        "code": "raw_passthrough_unavailable",
+        "message": "Raw upstream passthrough capabilities are not available",
+    }
+
+
+def test_admin_rejects_remote_reference_capability_schemas(api_context: APIContext) -> None:
+    workspace = post_admin(
+        api_context,
+        "/v1/admin/workspaces",
+        {"slug": "schema-acme", "display_name": "Schema Acme"},
+    )["workspace"]
+    application = post_admin(
+        api_context,
+        "/v1/admin/applications",
+        {
+            "workspace_id": workspace["id"],
+            "slug": "mock-app",
+            "display_name": "Mock App",
+            "provider_type": "mock",
+            "base_url": "https://mock.example.test",
+        },
+    )["application"]
+
+    response = api_context.client.post(
+        "/v1/admin/capabilities",
+        headers=authorization_headers("admin-token"),
+        json={
+            **capability_payload(UUID(workspace["id"]), UUID(application["id"])),
+            "id": "mock.schema.reference",
+            "input_schema": {
+                "type": "object",
+                "properties": {"query": {"$ref": "https://schemas.example.test/query.json"}},
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "capability_schema_invalid"
+
+
 def test_admin_can_instantiate_capability_from_template(api_context: APIContext) -> None:
     workspace = post_admin(
         api_context,

@@ -107,6 +107,50 @@ def test_metrics_endpoint_exposes_observability_counters() -> None:
     assert "grantora_apisix_sync_total" in response.text
 
 
+def test_request_body_limit_rejects_oversized_admin_request_before_handler() -> None:
+    settings = Settings(
+        database_url="sqlite+pysqlite:///:memory:",
+        environment="test",
+        max_request_body_bytes=16,
+    )
+    app = create_app(settings=settings, database=Probe())
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/admin/workspaces",
+            headers={"Authorization": "Bearer secret-admin", "X-Request-Id": "req_too_big"},
+            json={"slug": "a" * 32, "display_name": "too large"},
+        )
+
+    assert response.status_code == 413
+    assert response.headers["X-Request-Id"] == "req_too_big"
+    assert response.json() == {
+        "request_id": "req_too_big",
+        "status": "error",
+        "error": {"code": "request_body_too_large", "message": "Request body is too large"},
+    }
+
+
+def test_request_body_limit_rejects_oversized_runtime_request_before_auth() -> None:
+    settings = Settings(
+        database_url="sqlite+pysqlite:///:memory:",
+        environment="test",
+        max_request_body_bytes=16,
+    )
+    app = create_app(settings=settings, database=Probe())
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/invoke/mock.echo",
+            headers={"Authorization": "Bearer secret-agent", "X-Request-Id": "req_runtime_big"},
+            json={"user": "alice", "input": {"query": "x" * 64}},
+        )
+
+    assert response.status_code == 413
+    assert response.headers["X-Request-Id"] == "req_runtime_big"
+    assert response.json()["error"]["code"] == "request_body_too_large"
+
+
 def test_metrics_capture_auth_failure_and_apisix_sync_without_sensitive_data(
     tmp_path: Path,
 ) -> None:

@@ -212,9 +212,22 @@ Rules:
 
 ## Admin API
 
-Admin endpoints require admin authentication. The MVP uses an admin bootstrap token hash from environment configuration.
+Admin endpoints require admin authentication. Bootstrap admin access uses an environment-provided token hash. DB-backed admin credentials may also authenticate with the same bearer-token hash format and can be scoped to one workspace. Optional OIDC/NS8 admin identity is disabled by default and only accepts explicitly allowlisted subjects when enabled.
 
-Admin clients authenticate with `Authorization: Bearer <admin_bootstrap_token>`. Grantora verifies this token against `ADMIN_BOOTSTRAP_TOKEN_HASH` using the same peppered token hash format as agent tokens.
+Admin clients authenticate with `Authorization: Bearer <admin_token>`. Grantora verifies bootstrap tokens against `ADMIN_BOOTSTRAP_TOKEN_HASH`, or DB-backed admin credentials against the `admin_credentials.token_hash` column, using the same peppered token hash format as agent tokens. OIDC admin subjects are read from `OIDC_SUBJECT_HEADER` only when `FEATURE_OIDC=true` and the subject appears in `OIDC_ADMIN_SUBJECTS`.
+
+Rules:
+
+- Bootstrap and allowlisted OIDC admins are super admins.
+- DB-backed admin credentials with `workspace_id=null` are super admins.
+- DB-backed admin credentials with a workspace id can only create, list, update or inspect resources in that workspace.
+- Scoped admins cannot run APISIX sync/status or create global permissions.
+- Agent bearer tokens are never valid admin credentials.
+- Slugs, provider ids, adapter ids, operation ids, capability ids, permission codes and external user ids must match the constrained identifier patterns implemented by request schemas.
+- Application `base_url` values must be HTTP or HTTPS origins with no credentials, path, query, fragment, localhost name, bare host name or literal private/local address.
+- Request bodies larger than `MAX_REQUEST_BODY_BYTES` fail before route handlers with safe `request_body_too_large` errors.
+- Capability schemas must be bounded object schemas, must set top-level `additionalProperties=false`, and must not contain `$ref` or `$dynamicRef` references.
+- Raw upstream passthrough capability definitions are rejected by default.
 
 Required endpoints:
 
@@ -314,6 +327,7 @@ Rules:
 
 - Application slugs are unique per workspace.
 - Creating an application in a missing or disabled workspace fails safely.
+- `base_url` is constrained to an origin such as `https://nethvoice.example.test`; it cannot include provider paths, credentials, localhost/private addresses, query strings or fragments.
 - Admin application responses may include the configured `base_url`, but must never include secrets or provider credentials.
 
 ### GET /v1/admin/applications
@@ -575,7 +589,7 @@ Rules:
 
 ### POST /v1/admin/secrets
 
-Stores an upstream secret encrypted at rest.
+Stores an upstream secret encrypted at rest, or stores an encrypted external secret reference that will be resolved by a configured external backend in a future deployment.
 
 Request body:
 
@@ -590,12 +604,27 @@ Request body:
 }
 ```
 
+External reference request body:
+
+```json
+{
+  "workspace_id": "uuid",
+  "application_instance_id": "uuid",
+  "owner_type": "user",
+  "owner_id": "uuid",
+  "secret_type": "bearer_token",
+  "external_reference": "vault://grantora/alice-token"
+}
+```
+
 Success response wraps a metadata-only `secret` object with `id`, `workspace_id`, `application_instance_id`, `owner_type`, `owner_id`, `secret_type` and `status`.
 
 Rules:
 
-- `value` is encrypted before persistence and is never returned.
+- Exactly one of `value` or `external_reference` must be provided.
+- `value` or the external reference marker is encrypted before persistence and is never returned.
 - `encrypted_value` is never returned.
+- External references fail closed with `secret_unavailable` unless an explicit external secret backend is enabled and able to resolve the reference.
 - The application instance must belong to the same active workspace.
 - `owner_type=workspace` requires `owner_id` to match the workspace id.
 - `owner_type=user` and `owner_type=agent` require an active owner in the same workspace.
@@ -640,6 +669,8 @@ Request body:
   "secret_type": "bearer_token"
 }
 ```
+
+Rotation may use `external_reference` instead of `value`, with the same exactly-one-source rule as secret creation.
 
 Success response includes metadata for the replacement `secret` and the `revoked_secret`. `secret_type` is optional and defaults to the old secret type.
 
@@ -786,7 +817,7 @@ Safe sync failure response:
 
 Rules:
 
-- Authenticate the admin bootstrap token.
+- Authenticate a super-admin principal.
 - Seed the default `gateway-runtime` desired route when absent.
 - Compare current APISIX route state before writing. When `APISIX_FAIL_CLOSED=true`, load all current route state before any write so Admin API failures preserve the last known data-plane route state.
 - Running sync twice without desired-state changes must not perform a second APISIX update.
@@ -994,7 +1025,24 @@ status: active | revoked
 
 Secrets are encrypted before storage, decrypted only in memory during invocation and never returned through APIs.
 
-Secret resolution selects only active secrets. Rotating a secret is done by inserting the replacement as `active` and marking the old secret `revoked`; revoked secrets are not selected for invocation.
+Secret resolution selects only active secrets. Rotating a secret is done by inserting the replacement as `active` and marking the old secret `revoked`; revoked secrets are not selected for invocation. External secret references are stored as encrypted markers in `encrypted_value`; unresolved or disabled external backends fail closed with `secret_unavailable`.
+
+## Admin Credential Contract
+
+```yaml
+id: uuid
+subject: string
+token_hash: hmac-sha256:<hex>
+token_hash_algorithm: hmac-sha256
+workspace_id: uuid | null
+status: active | disabled
+```
+
+Rules:
+
+- `workspace_id=null` means super admin.
+- A non-null `workspace_id` scopes the admin credential to that active workspace.
+- Plaintext admin tokens are never stored or returned by runtime APIs.
 
 ## Adapter Hardening Contract
 
@@ -1024,7 +1072,7 @@ Rules:
 id: uuid
 timestamp: datetime
 request_id: string
-actor_type: agent | admin_bootstrap
+actor_type: agent | admin_bootstrap | admin_token | admin_oidc
 workspace_id: uuid
 agent_id: uuid | null
 user_id: uuid | null
@@ -1038,7 +1086,7 @@ remote_addr: string | null
 ```
 
 Denied requests must be audited even when no adapter is invoked.
-Admin bootstrap mutations use `actor_type: admin_bootstrap`; runtime agent activity uses `actor_type: agent`.
+Admin mutations use `actor_type` for the authenticated admin principal; runtime agent activity uses `actor_type: agent`.
 
 ## Usage Event Contract
 
@@ -1061,6 +1109,7 @@ Required tables:
 
 ```text
 workspaces
+admin_credentials
 application_instances
 capabilities
 agents
@@ -1090,6 +1139,12 @@ ON usage_events (workspace_id, timestamp DESC);
 
 CREATE INDEX idx_capabilities_workspace_status
 ON capabilities (workspace_id, status);
+
+CREATE INDEX idx_admin_credentials_token_hash_status
+ON admin_credentials (token_hash, status);
+
+CREATE INDEX idx_admin_credentials_workspace_status
+ON admin_credentials (workspace_id, status);
 ```
 
 ## Migration Rules

@@ -15,12 +15,19 @@ Required groups:
 - Core service: environment, bind address, public base URL and logging.
 - Database: PostgreSQL URL, pool size and migration behavior.
 - Security: `SECRET_ENCRYPTION_KEY`, `GRANTORA_AGENT_TOKEN_PEPPER` or `AGENT_TOKEN_PEPPER`, and `GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH` or `ADMIN_BOOTSTRAP_TOKEN_HASH`.
+- Security hardening: `MAX_REQUEST_BODY_BYTES`, optional `FEATURE_OIDC` plus OIDC subject settings, and optional `FEATURE_EXTERNAL_SECRET_STORE`.
 - Local workflow helpers: `ADMIN_BOOTSTRAP_TOKEN`, `GRANTORA_API_URL`, `GRANTORA_RUNTIME_URL` and optional `DEMO_*` values used by `make demo-seed` and `make smoke`.
 - APISIX: public URL, Admin API URL, Admin API key and sync settings.
 - Observability: metrics, audit retention, usage retention, request id header and optional tracing.
 - Upstream defaults: timeouts, TLS verification, response size limit and read-only retry attempts.
 
 Agent and admin bootstrap token hashes use the `hmac-sha256:<hex>` format. Generate the admin bootstrap hash with the same token pepper that the service will receive at runtime. The plaintext `ADMIN_BOOTSTRAP_TOKEN` is for local operator commands only; it is not passed to `grantora-api` by the compose file.
+
+DB-backed admin credentials use the same token hash format and can be scoped to a workspace. Scoped admins can manage resources in that workspace only; APISIX sync/status and global permission creation require a super-admin principal.
+
+OIDC/NS8 admin identity remains optional. Leave `FEATURE_OIDC=false` for standalone bootstrap-token operation. When enabling it, set `OIDC_ADMIN_SUBJECTS` to an allowlist and deploy Grantora behind a trusted component that strips incoming identity headers before setting `OIDC_SUBJECT_HEADER`.
+
+Grantora rejects oversized JSON requests before route handlers using `MAX_REQUEST_BODY_BYTES`. Application `base_url` values are constrained to HTTP/HTTPS origins and must not point at localhost, private addresses, bare hostnames or provider paths.
 
 ## Local Docker Compose
 
@@ -127,6 +134,22 @@ Optional OpenTelemetry tracing is controlled by these environment variables:
 - `OTEL_EXPORTER_OTLP_TIMEOUT_SECONDS`: exporter timeout for remote collectors.
 
 When tracing is enabled, Grantora records only safe identifiers such as request id, path, status code, workspace id, agent id, user id and capability id when they are known. It does not attach authorization headers, tokens, cookies, payload bodies or upstream secret material to spans.
+
+## Security Gates
+
+Run release security gates before publishing artifacts:
+
+```bash
+python -m pip install -e '.[security]'
+make security-scan
+make sbom
+docker build -t grantora-api:security -f containers/grantora-api.Dockerfile .
+make container-scan IMAGE=grantora-api:security
+```
+
+`make security-scan` writes `dist/security/dependency-vulnerabilities.json` and fails on unresolved dependency findings reported by `pip-audit`. `make sbom` writes a CycloneDX JSON SBOM to `dist/security/sbom.cdx.json`. `make container-scan` writes `dist/security/container-vulnerabilities.json` and fails on high or critical container findings reported by Trivy. The `Security Gates` workflow runs the same dependency/SBOM gates, scans the built container image and uploads the security artifacts.
+
+External secret references can be submitted with `external_reference` instead of `value` on secret create or rotation. References are stored as encrypted markers. Until an external secret backend is configured, runtime secret resolution fails closed with `secret_unavailable` and never invokes the adapter.
 
 ## MCP And Agent Tooling
 
@@ -300,7 +323,7 @@ Back up:
 
 - PostgreSQL database
 - Environment-managed encryption keys and token peppers
-- Any external secret backend references when added
+- Any external secret backend references and backend configuration when used
 
 Do not rely on APISIX etcd as the source of truth. APISIX state is generated from PostgreSQL and should be reconstructable by reconciliation.
 

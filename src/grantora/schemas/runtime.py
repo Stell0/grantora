@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from grantora.schemas.validation import ExternalId, MCPToolName
+
 
 class CapabilitySummary(BaseModel):
     id: str
@@ -29,7 +31,7 @@ class CapabilityListResponse(BaseModel):
 
 
 class CapabilityInvokeRequest(BaseModel):
-    user: str = Field(min_length=1)
+    user: ExternalId
     input: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -54,8 +56,8 @@ class MCPToolListResponse(BaseModel):
 
 
 class MCPToolCallRequest(BaseModel):
-    user: str = Field(min_length=1)
-    name: str = Field(min_length=1, max_length=128)
+    user: ExternalId
+    name: MCPToolName
     arguments: dict[str, Any] = Field(default_factory=dict)
 
 

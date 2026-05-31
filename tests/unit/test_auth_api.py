@@ -12,7 +12,7 @@ from sqlalchemy import select
 from grantora.auth import TOKEN_HASH_ALGORITHM, hash_token
 from grantora.config import Settings
 from grantora.db import Base, Database
-from grantora.db.models import Agent, Workspace
+from grantora.db.models import AdminCredential, Agent, Workspace
 from grantora.main import create_app
 
 
@@ -143,6 +143,109 @@ def test_runtime_agent_authentication_and_me_response(api_context: APIContext) -
     assert "hash" not in valid_response.text
 
 
+def test_agent_token_cannot_access_admin_endpoints(api_context: APIContext) -> None:
+    workspace_id = add_workspace(api_context, slug="agent-admin-denied")
+    add_agent(api_context, workspace_id, "runtime-agent", "grt_agent_runtime")
+
+    response = api_context.client.get(
+        "/v1/admin/workspaces",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "admin_auth_invalid"
+
+
+def test_database_admin_credentials_are_workspace_scoped(api_context: APIContext) -> None:
+    own_workspace_id = add_workspace(api_context, slug="own-workspace")
+    other_workspace_id = add_workspace(api_context, slug="other-workspace")
+    add_admin_credential(
+        api_context,
+        subject="alice-admin",
+        plaintext_token="scoped-admin-token",
+        workspace_id=own_workspace_id,
+    )
+
+    list_response = api_context.client.get(
+        "/v1/admin/workspaces",
+        headers=authorization_headers("scoped-admin-token"),
+    )
+    own_user_response = api_context.client.post(
+        "/v1/admin/users",
+        headers=authorization_headers("scoped-admin-token"),
+        json={
+            "workspace_id": str(own_workspace_id),
+            "external_id": "alice",
+            "display_name": "Alice",
+        },
+    )
+    cross_workspace_response = api_context.client.post(
+        "/v1/admin/users",
+        headers=authorization_headers("scoped-admin-token"),
+        json={
+            "workspace_id": str(other_workspace_id),
+            "external_id": "mallory",
+            "display_name": "Mallory",
+        },
+    )
+    apisix_response = api_context.client.get(
+        "/v1/admin/apisix/status",
+        headers=authorization_headers("scoped-admin-token"),
+    )
+
+    assert list_response.status_code == 200
+    assert [workspace["id"] for workspace in list_response.json()["workspaces"]] == [
+        str(own_workspace_id)
+    ]
+    assert own_user_response.status_code == 201
+    assert cross_workspace_response.status_code == 403
+    assert cross_workspace_response.json()["error"]["code"] == "admin_scope_denied"
+    assert apisix_response.status_code == 403
+    assert apisix_response.json()["error"]["code"] == "admin_scope_denied"
+
+
+def test_bootstrap_auth_still_works_when_oidc_is_disabled(api_context: APIContext) -> None:
+    oidc_only_response = api_context.client.get(
+        "/v1/admin/workspaces",
+        headers={"X-Grantora-Admin-Subject": "ns8-admin"},
+    )
+    bootstrap_response = api_context.client.get(
+        "/v1/admin/workspaces",
+        headers={**authorization_headers("admin-token"), "X-Grantora-Admin-Subject": "ns8-admin"},
+    )
+
+    assert oidc_only_response.status_code == 401
+    assert oidc_only_response.json()["error"]["code"] == "admin_auth_missing"
+    assert bootstrap_response.status_code == 200
+
+
+def test_oidc_admin_subject_is_optional_and_allowlisted(tmp_path: Path) -> None:
+    settings = Settings(
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'grantora.sqlite'}",
+        environment="test",
+        admin_bootstrap_token_hash=None,
+        feature_oidc=True,
+        oidc_admin_subjects="ns8-admin@example.test",
+    )
+    database = Database(settings)
+    Base.metadata.create_all(database.engine)
+    app = create_app(settings=settings, database=database)
+
+    with TestClient(app) as client:
+        allowed_response = client.get(
+            "/v1/admin/workspaces",
+            headers={"X-Grantora-Admin-Subject": "ns8-admin@example.test"},
+        )
+        denied_response = client.get(
+            "/v1/admin/workspaces",
+            headers={"X-Grantora-Admin-Subject": "mallory@example.test"},
+        )
+
+    assert allowed_response.status_code == 200
+    assert denied_response.status_code == 401
+    assert denied_response.json()["error"]["code"] == "admin_auth_invalid"
+
+
 def make_test_settings(tmp_path: Path) -> Settings:
     pepper = "test-token-pepper"
     return Settings(
@@ -186,3 +289,23 @@ def add_agent(
         session.add(agent)
         session.commit()
         return agent.id
+
+
+def add_admin_credential(
+    api_context: APIContext,
+    *,
+    subject: str,
+    plaintext_token: str,
+    workspace_id: UUID | None,
+) -> UUID:
+    with api_context.database.session_factory() as session:
+        workspace = session.get(Workspace, workspace_id) if workspace_id is not None else None
+        credential = AdminCredential(
+            subject=subject,
+            token_hash=hash_token(plaintext_token, api_context.settings.agent_token_pepper),
+            token_hash_algorithm=TOKEN_HASH_ALGORITHM,
+            workspace=workspace,
+        )
+        session.add(credential)
+        session.commit()
+        return credential.id

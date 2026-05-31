@@ -3,7 +3,9 @@ import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from opentelemetry.trace import SpanKind
 
 from grantora import __version__
@@ -89,6 +91,41 @@ def create_app(
             trace_id, request_span_id = span_ids(span)
             request.state.trace_id = trace_id
             request.state.span_id = request_span_id
+            if _request_body_exceeds_limit(request, resolved_settings.max_request_body_bytes):
+                response = _safe_error_response(
+                    request,
+                    request_id=request_id,
+                    status_code=413,
+                    error_code="request_body_too_large",
+                    message="Request body is too large",
+                )
+                resolved_trace_manager.inject_current_context(response.headers)
+                _set_span_request_attributes(
+                    span,
+                    request,
+                    request_id,
+                    status_code=response.status_code,
+                )
+                record_http_request(
+                    started_at=started_at,
+                    status_code=response.status_code,
+                    workspace=getattr(request.state, "workspace_id", None),
+                    agent=getattr(request.state, "agent_id", None),
+                    user=getattr(request.state, "user_id", None),
+                    capability=getattr(request.state, "capability_id", None),
+                    provider=getattr(request.state, "provider_type", None),
+                )
+                LOGGER.warning(
+                    "request rejected",
+                    extra=_request_log_context(
+                        request,
+                        request_id,
+                        response.status_code,
+                        started_at,
+                    )
+                    | {"error_code": "request_body_too_large"},
+                )
+                return response
             try:
                 response = await call_next(request)
             except Exception:
@@ -144,10 +181,25 @@ def create_app(
     app.state.apisix_client_factory = create_apisix_admin_client
     app.state.trace_manager = resolved_trace_manager
     app.add_exception_handler(GrantoraAPIError, grantora_api_error_handler)
+    app.add_exception_handler(RequestValidationError, request_validation_error_handler)
     app.include_router(health_router)
     app.include_router(runtime_router)
     app.include_router(admin_router)
     return app
+
+
+async def request_validation_error_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    request_id = getattr(request.state, "request_id", None) or create_request_id()
+    return _safe_error_response(
+        request,
+        request_id=request_id,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        error_code="request_validation_failed",
+        message="Request validation failed",
+    )
 
 
 async def _run_apisix_sync_loop(app: FastAPI) -> None:
@@ -224,6 +276,36 @@ def _request_log_context(
         "status_code": status_code,
         "duration_ms": max(int((now() - started_at) * 1000), 0),
     }
+
+
+def _request_body_exceeds_limit(request: Request, max_bytes: int) -> bool:
+    content_length = request.headers.get("content-length")
+    if content_length is None:
+        return False
+    try:
+        return int(content_length) > max_bytes
+    except ValueError:
+        return True
+
+
+def _safe_error_response(
+    request: Request,
+    *,
+    request_id: str,
+    status_code: int,
+    error_code: str,
+    message: str,
+) -> JSONResponse:
+    settings: Settings = request.app.state.settings
+    return JSONResponse(
+        status_code=status_code,
+        headers={settings.request_id_header: request_id},
+        content={
+            "request_id": request_id,
+            "status": "error",
+            "error": {"code": error_code, "message": message},
+        },
+    )
 
 
 def _set_span_request_attributes(

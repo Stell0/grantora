@@ -20,7 +20,7 @@ from grantora.apisix import (
 )
 from grantora.audit import record_audit_event
 from grantora.auth import TOKEN_HASH_ALGORITHM, create_agent_token, hash_token
-from grantora.auth.dependencies import AdminBootstrap, DatabaseSession
+from grantora.auth.dependencies import AdminBootstrap, AdminPrincipal, DatabaseSession
 from grantora.capabilities import CapabilitySchemaValidationError, check_json_schema
 from grantora.capabilities.permissions import DESCRIBE_PERMISSION, RISK_CLASS_PERMISSIONS
 from grantora.config import Settings
@@ -99,6 +99,7 @@ from grantora.schemas import (
     WorkspaceAdminSummary,
 )
 from grantora.secrets import SecretCipher
+from grantora.secrets.stores import stored_external_secret_reference
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 
@@ -107,6 +108,16 @@ DEFAULT_PERMISSION_DESCRIPTIONS = {
     RISK_CLASS_PERMISSIONS["read_only"]: "Invoke read-only capabilities",
     RISK_CLASS_PERMISSIONS["side_effect"]: "Invoke side-effecting capabilities",
     RISK_CLASS_PERMISSIONS["destructive"]: "Invoke destructive capabilities",
+}
+RAW_PASSTHROUGH_OPERATIONS = {"http.get", "http.post", "http.request", "raw.request"}
+RAW_PASSTHROUGH_INPUT_FIELDS = {
+    "headers",
+    "method",
+    "path",
+    "raw_body",
+    "upstream_path",
+    "upstream_url",
+    "url",
 }
 
 
@@ -121,6 +132,7 @@ def create_workspace(
     _admin: AdminBootstrap,
     session: DatabaseSession,
 ) -> AdminWorkspaceResponse:
+    _require_super_admin(_admin)
     workspace = Workspace(
         slug=payload.slug,
         display_name=payload.display_name,
@@ -142,6 +154,8 @@ def list_workspaces(
     offset: int = Query(default=0, ge=0),
 ) -> AdminWorkspaceListResponse:
     statement = select(Workspace).order_by(Workspace.slug)
+    if _admin.workspace_id is not None:
+        statement = statement.where(Workspace.id == _admin.workspace_id)
     if not include_disabled:
         statement = statement.where(Workspace.status == ACTIVE_STATUS)
     workspaces = session.scalars(statement.offset(offset).limit(limit)).all()
@@ -163,6 +177,7 @@ def create_application(
     _admin: AdminBootstrap,
     session: DatabaseSession,
 ) -> AdminApplicationResponse:
+    _require_admin_workspace(_admin, payload.workspace_id)
     workspace = _get_active_workspace_or_404(session, payload.workspace_id)
     application = ApplicationInstance(
         workspace=workspace,
@@ -193,6 +208,7 @@ def list_applications(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> AdminApplicationListResponse:
+    workspace_id = _workspace_filter_for_admin(_admin, workspace_id)
     statement = select(ApplicationInstance).order_by(ApplicationInstance.slug)
     if workspace_id is not None:
         statement = statement.where(ApplicationInstance.workspace_id == workspace_id)
@@ -215,6 +231,7 @@ def create_user(
     _admin: AdminBootstrap,
     session: DatabaseSession,
 ) -> AdminUserResponse:
+    _require_admin_workspace(_admin, payload.workspace_id)
     workspace = _get_active_workspace_or_404(session, payload.workspace_id)
     user = User(
         workspace=workspace,
@@ -238,6 +255,7 @@ def list_users(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> AdminUserListResponse:
+    workspace_id = _workspace_filter_for_admin(_admin, workspace_id)
     statement = select(User).order_by(User.external_id)
     if workspace_id is not None:
         statement = statement.where(User.workspace_id == workspace_id)
@@ -260,6 +278,7 @@ def update_user_status(
     session: DatabaseSession,
 ) -> AdminUserResponse:
     user = _get_user_or_404(session, user_id)
+    _require_admin_workspace(_admin, user.workspace_id)
     if payload.status == ACTIVE_STATUS:
         _get_active_workspace_or_404(session, user.workspace_id)
     user.status = payload.status
@@ -279,6 +298,7 @@ def create_capability(
     _admin: AdminBootstrap,
     session: DatabaseSession,
 ) -> AdminCapabilityResponse:
+    _require_admin_workspace(_admin, payload.workspace_id)
     workspace = _get_active_workspace_or_404(session, payload.workspace_id)
     application = _get_active_application_or_404(session, payload.application_instance_id)
     if application.workspace_id != workspace.id:
@@ -296,6 +316,7 @@ def create_capability(
 
     _check_capability_schema(payload.input_schema)
     _check_capability_schema(payload.output_schema)
+    _check_no_raw_passthrough(payload.operation, payload.input_schema)
 
     capability = Capability(
         id=payload.id,
@@ -354,6 +375,7 @@ def create_capability_from_template(
     _admin: AdminBootstrap,
     session: DatabaseSession,
 ) -> AdminCapabilityResponse:
+    _require_admin_workspace(_admin, payload.workspace_id)
     template = get_capability_template(payload.template_id)
     if template is None:
         raise GrantoraAPIError(
@@ -418,6 +440,7 @@ def list_admin_capabilities(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> AdminCapabilityListResponse:
+    workspace_id = _workspace_filter_for_admin(_admin, workspace_id)
     statement = select(Capability).order_by(Capability.id)
     if workspace_id is not None:
         statement = statement.where(Capability.workspace_id == workspace_id)
@@ -444,6 +467,7 @@ def update_capability_status(
     session: DatabaseSession,
 ) -> AdminCapabilityResponse:
     capability = _get_capability_or_404(session, capability_id)
+    _require_admin_workspace(_admin, capability.workspace_id)
     if payload.status == ACTIVE_STATUS:
         workspace = _get_active_workspace_or_404(session, capability.workspace_id)
         application = _get_active_application_or_404(session, capability.application_instance_id)
@@ -474,6 +498,7 @@ def create_permission(
     _admin: AdminBootstrap,
     session: DatabaseSession,
 ) -> AdminPermissionResponse:
+    _require_super_admin(_admin)
     permission = Permission(code=payload.code, description=payload.description)
     session.add(permission)
     _commit_or_conflict(session, "permission_conflict", "Permission could not be created")
@@ -508,6 +533,7 @@ def create_role(
     _admin: AdminBootstrap,
     session: DatabaseSession,
 ) -> AdminRoleResponse:
+    _require_admin_workspace(_admin, payload.workspace_id)
     workspace = _get_active_workspace_or_404(session, payload.workspace_id)
     if _ensure_default_permissions(session):
         _flush_or_conflict(session, "permission_conflict", "Permission could not be seeded")
@@ -545,6 +571,7 @@ def list_roles(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> AdminRoleListResponse:
+    workspace_id = _workspace_filter_for_admin(_admin, workspace_id)
     statement = select(Role).order_by(Role.slug)
     if workspace_id is not None:
         statement = statement.where(Role.workspace_id == workspace_id)
@@ -569,6 +596,7 @@ def create_binding(
     _admin: AdminBootstrap,
     session: DatabaseSession,
 ) -> AdminBindingResponse:
+    _require_admin_workspace(_admin, payload.workspace_id)
     workspace = _get_active_workspace_or_404(session, payload.workspace_id)
     agent = _get_active_agent_or_404(session, payload.agent_id)
     user = _get_active_user_or_404(session, payload.user_id)
@@ -616,6 +644,7 @@ def list_bindings(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> AdminBindingListResponse:
+    workspace_id = _workspace_filter_for_admin(_admin, workspace_id)
     statement = select(Binding).order_by(Binding.id)
     if workspace_id is not None:
         statement = statement.where(Binding.workspace_id == workspace_id)
@@ -646,6 +675,7 @@ def update_binding_status(
     session: DatabaseSession,
 ) -> AdminBindingResponse:
     binding = _get_binding_or_404(session, binding_id)
+    _require_admin_workspace(_admin, binding.workspace_id)
     if payload.status == ACTIVE_STATUS:
         _validate_binding_can_be_active(session, binding)
     binding.status = payload.status
@@ -669,6 +699,7 @@ def create_secret(
     _admin: AdminBootstrap,
     session: DatabaseSession,
 ) -> AdminSecretResponse:
+    _require_admin_workspace(_admin, payload.workspace_id)
     workspace = _get_active_workspace_or_404(session, payload.workspace_id)
     application = _get_active_application_or_404(session, payload.application_instance_id)
     if application.workspace_id != workspace.id:
@@ -680,7 +711,7 @@ def create_secret(
     _validate_secret_owner(session, workspace.id, payload.owner_type, payload.owner_id)
     try:
         encrypted_value = SecretCipher(request.app.state.settings.secret_encryption_key).encrypt(
-            payload.value
+            _secret_stored_value(payload.value, payload.external_reference)
         )
     except ValueError as exc:
         raise GrantoraAPIError(
@@ -723,6 +754,7 @@ def list_secrets(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> AdminSecretListResponse:
+    workspace_id = _workspace_filter_for_admin(_admin, workspace_id)
     statement = select(Secret).order_by(Secret.id)
     if workspace_id is not None:
         statement = statement.where(Secret.workspace_id == workspace_id)
@@ -751,6 +783,7 @@ def update_secret_status(
     session: DatabaseSession,
 ) -> AdminSecretResponse:
     secret = _get_secret_or_404(session, secret_id)
+    _require_admin_workspace(_admin, secret.workspace_id)
     if payload.status == ACTIVE_STATUS:
         _validate_secret_can_be_active(session, secret)
     secret.status = payload.status
@@ -768,10 +801,11 @@ def rotate_secret(
     session: DatabaseSession,
 ) -> AdminSecretRotationResponse:
     old_secret = _get_active_secret_or_404(session, secret_id)
+    _require_admin_workspace(_admin, old_secret.workspace_id)
     _validate_secret_can_be_active(session, old_secret)
     try:
         encrypted_value = SecretCipher(request.app.state.settings.secret_encryption_key).encrypt(
-            payload.value
+            _secret_stored_value(payload.value, payload.external_reference)
         )
     except ValueError as exc:
         raise GrantoraAPIError(
@@ -816,6 +850,7 @@ def list_audit_events(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> AdminAuditListResponse:
+    workspace_id = _workspace_filter_for_admin(_admin, workspace_id)
     statement = _audit_statement(
         workspace_id=workspace_id,
         actor_type=actor_type,
@@ -849,6 +884,7 @@ def list_usage_events(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> AdminUsageListResponse:
+    workspace_id = _workspace_filter_for_admin(_admin, workspace_id)
     filters = _usage_filters(
         workspace_id=workspace_id,
         agent_id=agent_id,
@@ -917,6 +953,7 @@ def create_agent(
     _admin: AdminBootstrap,
     session: DatabaseSession,
 ) -> AdminAgentCreateResponse:
+    _require_admin_workspace(_admin, payload.workspace_id)
     workspace = get_active_workspace_by_id(session, payload.workspace_id)
     if workspace is None:
         raise GrantoraAPIError(
@@ -955,6 +992,7 @@ def list_agents(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> AdminAgentListResponse:
+    workspace_id = _workspace_filter_for_admin(_admin, workspace_id)
     statement = select(Agent).order_by(Agent.slug)
     if workspace_id is not None:
         statement = statement.where(Agent.workspace_id == workspace_id)
@@ -978,6 +1016,7 @@ def update_agent_status(
     session: DatabaseSession,
 ) -> AdminAgentResponse:
     agent = _get_agent_or_404(session, agent_id)
+    _require_admin_workspace(_admin, agent.workspace_id)
     if payload.status == ACTIVE_STATUS:
         _get_active_workspace_or_404(session, agent.workspace_id)
     agent.status = payload.status
@@ -992,6 +1031,7 @@ async def sync_apisix_routes(
     _admin: AdminBootstrap,
     session: DatabaseSession,
 ) -> AdminApisixSyncResponse:
+    _require_super_admin(_admin)
     settings = request.app.state.settings
     client_factory = _get_apisix_client_factory(request)
     async with client_factory(settings) as apisix_client:
@@ -1007,6 +1047,7 @@ async def get_apisix_status(
     session: DatabaseSession,
     include_drift: bool = False,
 ) -> AdminApisixStatusResponse:
+    _require_super_admin(_admin)
     sync_status = get_apisix_sync_status(session)
     route_drift = await _get_apisix_route_drift(request, session) if include_drift else None
     if sync_status is None:
@@ -1015,6 +1056,41 @@ async def get_apisix_status(
             route_drift=route_drift or ApisixRouteDriftSummary(),
         )
     return _apisix_status_response_from_model(sync_status, route_drift=route_drift)
+
+
+def _require_super_admin(admin: AdminPrincipal) -> None:
+    if admin.is_super_admin:
+        return
+    raise GrantoraAPIError(
+        status.HTTP_403_FORBIDDEN,
+        "admin_scope_denied",
+        "Admin is not allowed to manage this resource",
+    )
+
+
+def _require_admin_workspace(admin: AdminPrincipal, workspace_id: UUID) -> None:
+    if admin.workspace_id is None or admin.workspace_id == workspace_id:
+        return
+    raise GrantoraAPIError(
+        status.HTTP_403_FORBIDDEN,
+        "admin_scope_denied",
+        "Admin is not allowed to manage this workspace",
+    )
+
+
+def _workspace_filter_for_admin(
+    admin: AdminPrincipal,
+    requested_workspace_id: UUID | None,
+) -> UUID | None:
+    if admin.workspace_id is None:
+        return requested_workspace_id
+    if requested_workspace_id is not None and requested_workspace_id != admin.workspace_id:
+        raise GrantoraAPIError(
+            status.HTTP_403_FORBIDDEN,
+            "admin_scope_denied",
+            "Admin is not allowed to inspect this workspace",
+        )
+    return admin.workspace_id
 
 
 def _flush_or_conflict(session: Session, code: str, message: str) -> None:
@@ -1046,7 +1122,7 @@ def _record_admin_audit_event(
     record_audit_event(
         session,
         request_id=get_request_id(request),
-        actor_type="admin_bootstrap",
+        actor_type=getattr(request.state, "admin_actor_type", "admin_bootstrap"),
         workspace_id=workspace_id,
         agent_id=agent_id,
         user_id=user_id,
@@ -1215,6 +1291,22 @@ def _check_capability_schema(schema: dict[str, object]) -> None:
         ) from exc
 
 
+def _check_no_raw_passthrough(operation: str, input_schema: dict[str, object]) -> None:
+    properties = input_schema.get("properties", {})
+    property_names = set(properties) if isinstance(properties, dict) else set()
+    if (
+        operation in RAW_PASSTHROUGH_OPERATIONS
+        or operation.startswith("raw.")
+        or "passthrough" in operation
+        or RAW_PASSTHROUGH_INPUT_FIELDS.intersection(property_names)
+    ):
+        raise GrantoraAPIError(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "raw_passthrough_unavailable",
+            "Raw upstream passthrough capabilities are not available",
+        )
+
+
 def _ensure_default_permissions(session: Session) -> bool:
     permission_codes = set(DEFAULT_PERMISSION_DESCRIPTIONS)
     existing_codes = set(
@@ -1285,6 +1377,18 @@ def _validate_secret_owner(
         "secret_owner_invalid",
         "Secret owner type is invalid",
     )
+
+
+def _secret_stored_value(value: str | None, external_reference: str | None) -> str:
+    if external_reference is not None:
+        return stored_external_secret_reference(external_reference)
+    if value is None:
+        raise GrantoraAPIError(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "secret_value_invalid",
+            "Secret value is invalid",
+        )
+    return value
 
 
 def _validate_binding_can_be_active(session: Session, binding: Binding) -> None:

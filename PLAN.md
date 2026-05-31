@@ -43,7 +43,7 @@ Assessed on 2026-05-31 against `src/grantora/`, `tests/unit/`, `CONTRACTS.md`, `
 - [x] The bootstrap path is packaged as `make demo-seed` plus `make smoke` through compose and APISIX. Test: workflow and smoke unit tests cover idempotent seeding and failing checks; full compose remains a manual/e2e check.
 - [x] NethVoice phonebook and Nextcloud files search are implemented as real adapters. Test: each real adapter has unit normalization/error mapping tests and integration tests with mock upstream transports.
 - [x] MCP tool listing is exposed through authenticated runtime HTTP endpoints with a tool-call bridge. Test: runtime MCP endpoint tests and smoke workflow checks verify filtered discovery and invocation.
-- [ ] No production CI, release packaging, image publishing, SBOM, dependency scan or NS8 module packaging is defined yet. Test: release pipeline creates reproducible artifacts and runs all gates.
+- [ ] Production release packaging, image publishing and NS8 module packaging are not defined yet. Security CI now covers dependency audit, SBOM and container scan artifacts. Test: release pipeline creates reproducible artifacts and runs all gates.
 
 ## Full Software Definition
 
@@ -161,20 +161,20 @@ Goal: make operators able to understand and maintain the system safely.
 - [x] Add backup and restore smoke test using compose PostgreSQL dump/restore plus APISIX resync. Test: restored environment can invoke a demo capability.
 - [x] Add runbook sections for common failures: invalid admin hash, bad Fernet key, missing secret, APISIX Admin API unavailable, migration failure and upstream timeout. Test: runbook commands are validated where practical.
 - [x] Add optional OpenTelemetry tracing only if it does not leak payloads or secrets. Test: spans contain safe identifiers only.
-- [x] output git commands to add files and commit changes using a conventional commit 
+- [x] output git commands to add files and commit changes using a conventional commit
 
 ## Milestone 16 - Security Hardening
 
 Goal: close security gaps before production release.
 
-- [ ] Add security regression tests for raw upstream passthrough absence. Test: arbitrary provider paths cannot be invoked through runtime APIs.
-- [ ] Add request body size limits for runtime and admin APIs. Test: oversized requests fail safely before adapter invocation.
-- [ ] Add stronger validation for URLs, slugs, capability ids and JSON schemas. Test: SSRF-prone or malformed base URLs are rejected or explicitly constrained.
-- [ ] Add admin authorization model beyond bootstrap token when product requirements are clear. Test: non-admin tokens cannot reach admin endpoints, and scoped admins cannot cross workspaces.
-- [ ] Add optional OIDC/NS8 identity integration without making NS8 required. Test: standalone bootstrap auth still works when OIDC is disabled.
-- [ ] Add external secret store abstraction behind the existing secret resolution rules. Test: PostgreSQL encrypted secrets and external references both fail closed.
-- [ ] Add dependency scanning, SBOM generation and container vulnerability checks. Test: release pipeline publishes scan artifacts and blocks critical unresolved findings.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] Add security regression tests for raw upstream passthrough absence. Test: arbitrary provider paths cannot be invoked through runtime APIs.
+- [x] Add request body size limits for runtime and admin APIs. Test: oversized requests fail safely before adapter invocation.
+- [x] Add stronger validation for URLs, slugs, capability ids and JSON schemas. Test: SSRF-prone or malformed base URLs are rejected or explicitly constrained.
+- [x] Add admin authorization model beyond bootstrap token when product requirements are clear. Test: non-admin tokens cannot reach admin endpoints, and scoped admins cannot cross workspaces.
+- [x] Add optional OIDC/NS8 identity integration without making NS8 required. Test: standalone bootstrap auth still works when OIDC is disabled.
+- [x] Add external secret store abstraction behind the existing secret resolution rules. Test: PostgreSQL encrypted secrets and external references both fail closed.
+- [x] Add dependency scanning, SBOM generation and container vulnerability checks. Test: release pipeline publishes scan artifacts and blocks critical unresolved findings.
+- [x] output git commands to add files and commit changes using a conventional commit
 
 ## Milestone 17 - Release Packaging And NS8 Readiness
 
@@ -268,12 +268,17 @@ These variables are read by the current `Settings` class or the current compose 
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Optional OTLP/HTTP trace collector endpoint | unset | Falls back to the console exporter when tracing is enabled without a collector. |
 | `OTEL_EXPORTER_OTLP_TIMEOUT_SECONDS` | Trace export timeout | `10` | Positive float seconds. |
 | `REQUEST_ID_HEADER` | Header used for request id propagation | `X-Request-Id` | Included in responses. |
+| `MAX_REQUEST_BODY_BYTES` | Maximum accepted admin/runtime request body size | `1048576` | Oversized requests fail with a safe `request_body_too_large` response before handlers run. |
 | `DEFAULT_REQUEST_TIMEOUT_SECONDS` | Reserved/default request timeout setting | `30` | Present in settings; not broadly enforced yet. |
 | `UPSTREAM_TIMEOUT_SECONDS` | Adapter request timeout | `30` | Used by NethVoice and Nextcloud adapters. |
 | `UPSTREAM_CONNECT_TIMEOUT_SECONDS` | Adapter connect timeout | `5` | Used by NethVoice and Nextcloud adapters. |
 | `UPSTREAM_TLS_VERIFY` | Verify upstream TLS certificates | `true` | Used by NethVoice and Nextcloud adapters. |
 | `UPSTREAM_MAX_RESPONSE_BYTES` | Maximum upstream response size | `10485760` | Used by NethVoice and Nextcloud adapters. |
 | `UPSTREAM_READ_RETRY_ATTEMPTS` | Maximum total attempts for retryable read-only adapter calls | `2` | Side-effecting, destructive, draft and admin capabilities are not retried by default. |
+| `FEATURE_OIDC` | Enables optional header-based OIDC/NS8 admin subject auth | `false` | Standalone bootstrap auth works when disabled. Deploy only behind a trusted component that strips identity headers. |
+| `OIDC_ADMIN_SUBJECTS` | Comma-separated allowlist of OIDC admin subjects | unset | Used only when `FEATURE_OIDC=true`. |
+| `OIDC_SUBJECT_HEADER` | Header carrying the trusted admin subject | `X-Grantora-Admin-Subject` | Used only when `FEATURE_OIDC=true`. |
+| `FEATURE_EXTERNAL_SECRET_STORE` | Enables external secret reference resolution path | `false` | External references fail closed until a backend is configured. |
 
 ### Reserved Or Planned Variables
 
@@ -287,9 +292,7 @@ These appear in `.env.example` or the product docs but are not fully wired in th
 | `AUDIT_ENABLED` | Audit toggle | Audit is mandatory; remove or define carefully. |
 | `FEATURE_MCP` | MCP surface toggle | Milestone 13. |
 | `FEATURE_DIRECT_APISIX_PROXY` | Raw proxy toggle | Must remain off by default; any future use needs a security review. |
-| `FEATURE_OIDC` | OIDC/admin identity integration | Milestone 16. |
 | `FEATURE_EXTERNAL_POLICY_ENGINE` | External policy engine | Future only; deny-by-default remains local. |
-| `FEATURE_EXTERNAL_SECRET_STORE` | External secret backend | Milestone 16. |
 
 ### Generate Local Secrets
 
@@ -563,6 +566,9 @@ Use the narrowest command while developing, then the full project target before 
 make test
 make lint
 make format-check
+make security-scan
+make sbom
+make container-scan IMAGE=grantora-api:security
 ```
 
 When no virtual environment is available in this workspace, local validation may need explicit `PYTHONPATH` for target-installed dependencies as documented in repository memory. Release validation should use a clean environment.

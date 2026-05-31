@@ -95,6 +95,11 @@ class Settings(BaseSettings):
         validation_alias="OTEL_EXPORTER_OTLP_TIMEOUT_SECONDS",
     )
     request_id_header: str = Field(default="X-Request-Id", validation_alias="REQUEST_ID_HEADER")
+    max_request_body_bytes: int = Field(
+        default=1_048_576,
+        gt=0,
+        validation_alias="MAX_REQUEST_BODY_BYTES",
+    )
     default_request_timeout_seconds: float = Field(
         default=30.0,
         gt=0,
@@ -120,6 +125,16 @@ class Settings(BaseSettings):
         default=2,
         gt=0,
         validation_alias="UPSTREAM_READ_RETRY_ATTEMPTS",
+    )
+    feature_oidc: bool = Field(default=False, validation_alias="FEATURE_OIDC")
+    oidc_admin_subjects: str = Field(default="", validation_alias="OIDC_ADMIN_SUBJECTS")
+    oidc_subject_header: str = Field(
+        default="X-Grantora-Admin-Subject",
+        validation_alias="OIDC_SUBJECT_HEADER",
+    )
+    feature_external_secret_store: bool = Field(
+        default=False,
+        validation_alias="FEATURE_EXTERNAL_SECRET_STORE",
     )
 
     model_config = SettingsConfigDict(

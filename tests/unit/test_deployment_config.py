@@ -64,3 +64,38 @@ def test_observability_environment_reference_is_wired_to_settings(monkeypatch) -
     assert settings.otel_service_name == "grantora-ops"
     assert settings.otel_exporter_otlp_endpoint == "http://collector:4318/v1/traces"
     assert settings.otel_exporter_otlp_timeout_seconds == 12
+
+
+def test_security_environment_reference_is_wired_to_settings(monkeypatch) -> None:
+    monkeypatch.setenv("MAX_REQUEST_BODY_BYTES", "2048")
+    monkeypatch.setenv("FEATURE_OIDC", "true")
+    monkeypatch.setenv("OIDC_ADMIN_SUBJECTS", "alice@example.test,bob@example.test")
+    monkeypatch.setenv("OIDC_SUBJECT_HEADER", "X-Forwarded-User")
+    monkeypatch.setenv("FEATURE_EXTERNAL_SECRET_STORE", "true")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.max_request_body_bytes == 2048
+    assert settings.feature_oidc is True
+    assert settings.oidc_admin_subjects == "alice@example.test,bob@example.test"
+    assert settings.oidc_subject_header == "X-Forwarded-User"
+    assert settings.feature_external_secret_store is True
+
+
+def test_release_security_gates_are_defined() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "security.yml").read_text(encoding="utf-8")
+
+    assert "security-scan:" in makefile
+    assert "python -m pip_audit --strict --format json" in makefile
+    assert "sbom:" in makefile
+    assert "python -m cyclonedx_py environment --output-format JSON" in makefile
+    assert "container-scan:" in makefile
+    assert "trivy image --severity CRITICAL,HIGH --exit-code 1" in makefile
+    assert "release-security: security-scan sbom container-scan" in makefile
+    assert "pip-audit" in pyproject
+    assert "cyclonedx-bom" in pyproject
+    assert "actions/upload-artifact" in workflow
+    assert "container-vulnerabilities.json" in workflow
+    assert 'exit-code: "1"' in workflow

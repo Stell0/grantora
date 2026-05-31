@@ -9,6 +9,7 @@ from grantora.db.models import Capability, User
 from grantora.db.queries import get_active_secret_for_owner
 from grantora.metrics import record_secret_resolution
 from grantora.secrets.encryption import SecretCipher
+from grantora.secrets.stores import ExternalSecretStoreError, resolve_secret_value
 
 
 class SecretResolutionError(Exception):
@@ -64,8 +65,9 @@ def resolve_secret_material(
         )
 
     try:
-        value = SecretCipher(settings.secret_encryption_key).decrypt(secret.encrypted_value)
-    except (InvalidToken, ValueError) as exc:
+        stored_value = SecretCipher(settings.secret_encryption_key).decrypt(secret.encrypted_value)
+        value = resolve_secret_value(stored_value, settings).value
+    except (InvalidToken, ValueError, ExternalSecretStoreError) as exc:
         record_secret_resolution(
             workspace=str(capability.workspace_id),
             provider=capability.provider_type,

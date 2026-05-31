@@ -35,6 +35,7 @@ from grantora.logging import JsonLogFormatter
 from grantora.main import create_app
 from grantora.openapi import build_mcp_tool_list
 from grantora.secrets import SecretCipher
+from grantora.secrets.stores import stored_external_secret_reference
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -642,6 +643,50 @@ def test_missing_secret_fails_closed_and_is_recorded(api_context: APIContext) ->
     assert audit_event.error_code == "secret_not_found"
     assert usage_event is not None
     assert usage_event.status == "denied"
+
+
+def test_unreadable_postgres_secret_fails_closed_before_adapter(api_context: APIContext) -> None:
+    records = add_runtime_records(api_context)
+    add_unreadable_secret(api_context, records)
+
+    response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.search",
+        headers={**authorization_headers("grt_agent_runtime"), "X-Request-Id": "req_bad_secret"},
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+
+    assert response.status_code == 424
+    assert response.json()["error"] == {
+        "code": "secret_unavailable",
+        "message": "Required upstream secret could not be used",
+    }
+    assert api_context.adapter.calls == []
+
+
+def test_external_secret_reference_fails_closed_when_store_disabled(
+    api_context: APIContext,
+) -> None:
+    records = add_runtime_records(api_context)
+    add_secret(
+        api_context,
+        records,
+        owner_type="user",
+        owner_id=records.user_id,
+        value=stored_external_secret_reference("vault://grantora/alice-token"),
+    )
+
+    response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.search",
+        headers={
+            **authorization_headers("grt_agent_runtime"),
+            "X-Request-Id": "req_external_secret",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+
+    assert response.status_code == 424
+    assert response.json()["error"]["code"] == "secret_unavailable"
+    assert api_context.adapter.calls == []
 
 
 def test_revoked_secret_is_not_selected_for_invocation(api_context: APIContext) -> None:
@@ -1347,6 +1392,25 @@ def add_secret(
             secret_type="bearer_token",
             encrypted_value=cipher.encrypt(value),
             status=status,
+        )
+        session.add(secret)
+        session.commit()
+        return secret.id
+
+
+def add_unreadable_secret(api_context: APIContext, records: RuntimeRecords) -> UUID:
+    with api_context.database.session_factory() as session:
+        workspace = session.get(Workspace, records.workspace_id)
+        application = session.get(ApplicationInstance, records.application_id)
+        assert workspace is not None
+        assert application is not None
+        secret = Secret(
+            workspace=workspace,
+            application_instance=application,
+            owner_type="user",
+            owner_id=records.user_id,
+            secret_type="bearer_token",
+            encrypted_value="not-a-valid-fernet-token",
         )
         session.add(secret)
         session.commit()

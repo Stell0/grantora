@@ -36,6 +36,8 @@ make test-unit
 make test-integration
 make test-e2e
 make backup-restore-smoke
+make security-scan
+make sbom
 ```
 
 Integration and e2e tests skip external infrastructure checks unless the documented `GRANTORA_INTEGRATION_*`, `GRANTORA_RUN_E2E=1`, or `GRANTORA_RUN_BACKUP_RESTORE_SMOKE=1` environment variables are set. Provider adapter integration tests use mock `httpx` transports and do not contact real upstream services.
@@ -49,6 +51,10 @@ Tracing is optional and disabled by default. Set `OTEL_TRACING_ENABLED=true`, ke
 `make backup-restore-smoke` exercises the documented PostgreSQL dump and restore path, then reruns APISIX sync and a demo invocation. The opt-in pytest equivalent is gated behind `GRANTORA_RUN_BACKUP_RESTORE_SMOKE=1` because it tears down local compose volumes.
 
 Supported real provider templates currently include `nethvoice.phonebook.search` and `nextcloud.files.search`. Admins can list templates with `GET /v1/admin/capability-templates` and create a capability with `POST /v1/admin/capabilities/from-template`.
+
+Security hardening is enabled by default: request bodies are bounded by `MAX_REQUEST_BODY_BYTES`, application base URLs are constrained to safe origins, raw upstream passthrough capabilities are rejected, and admin tokens can be DB-backed and workspace-scoped. Optional OIDC/NS8 admin identity is disabled unless `FEATURE_OIDC=true` and the subject is allowlisted.
+
+Release security gates write artifacts under `dist/security/`: dependency audit JSON, CycloneDX SBOM and container vulnerability JSON. `make container-scan IMAGE=grantora-api:security` requires Trivy and fails on high or critical findings.
 
 ## Agent Tooling
 
@@ -87,4 +93,4 @@ For deployments where APISIX terminates TLS, set `GRANTORA_PUBLIC_BASE_URL` to t
 
 ## Development Status
 
-Status: Milestone 15 observability, retention and operations implemented. See [PLAN.md](PLAN.md) for the current roadmap status.
+Status: Milestone 16 security hardening implemented. See [PLAN.md](PLAN.md) for the current roadmap status.
