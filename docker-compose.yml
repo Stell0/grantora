@@ -1,0 +1,107 @@
+services:
+  grantora-api:
+    build:
+      context: .
+      dockerfile: containers/grantora-api.Dockerfile
+    container_name: grantora-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GRANTORA_ENV: ${GRANTORA_ENV:-development}
+      GRANTORA_PUBLIC_BASE_URL: ${GRANTORA_PUBLIC_BASE_URL:-http://localhost:9080}
+      GRANTORA_BIND_ADDR: ${GRANTORA_BIND_ADDR:-0.0.0.0}
+      GRANTORA_PORT: ${GRANTORA_PORT:-8080}
+      GRANTORA_LOG_LEVEL: ${GRANTORA_LOG_LEVEL:-INFO}
+      GRANTORA_JSON_LOGS: ${GRANTORA_JSON_LOGS:-true}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://grantora:grantora@postgres:5432/grantora}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-10}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-20}
+      MIGRATIONS_AUTO_RUN: ${MIGRATIONS_AUTO_RUN:-true}
+      APISIX_ADMIN_URL: ${APISIX_ADMIN_URL:-http://apisix:9180}
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:-change-me}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-change-me-32-byte-base64-key}
+      TOKEN_HASH_PEPPER: ${TOKEN_HASH_PEPPER:-change-me}
+      ADMIN_BOOTSTRAP_TOKEN_HASH: ${ADMIN_BOOTSTRAP_TOKEN_HASH:-change-me}
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+    ports:
+      - "${GRANTORA_API_PORT:-8080}:8080"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).read()"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - grantora
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: grantora-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-grantora}
+      POSTGRES_USER: ${POSTGRES_USER:-grantora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-grantora}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - grantora
+
+  apisix-etcd:
+    image: bitnami/etcd:3.5
+    container_name: grantora-apisix-etcd
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_ADVERTISE_CLIENT_URLS: http://apisix-etcd:2379
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+    volumes:
+      - apisix-etcd-data:/bitnami/etcd
+    healthcheck:
+      test:
+        - CMD
+        - etcdctl
+        - endpoint
+        - health
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      grantora:
+        aliases:
+          - etcd
+
+  apisix:
+    image: apache/apisix:3.10.0-debian
+    container_name: grantora-apisix
+    depends_on:
+      apisix-etcd:
+        condition: service_healthy
+    environment:
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:-change-me}
+    volumes:
+      - ./containers/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+    ports:
+      - "${APISIX_PUBLIC_PORT:-9080}:9080"
+      - "${APISIX_ADMIN_PORT:-9180}:9180"
+    networks:
+      - grantora
+
+volumes:
+  postgres-data:
+  apisix-etcd-data:
+
+networks:
+  grantora:
+    name: grantora
