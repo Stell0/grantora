@@ -17,6 +17,8 @@ grantora/
   TESTING.md
   OPERATIONS.md
   .env.example
+  .github/
+    workflows/
   docker-compose.yml
   pyproject.toml
   alembic.ini
@@ -24,6 +26,9 @@ grantora/
   containers/
     grantora-api.Dockerfile
     apisix/
+  deploy/
+    compose.production.yml
+    production.env.example
   migrations/
     versions/
   src/
@@ -33,6 +38,8 @@ grantora/
     integration/
     e2e/
   docs/
+    release.md
+    ns8-packaging.md
 ```
 
 Only the documentation and compose files are present at project start. The remaining paths are created as their milestones are implemented.
@@ -106,3 +113,11 @@ APISIX must not become the business authorization engine. Grantora API performs 
 - `tests/unit/`: pure logic tests for RBAC, tokens, schema validation, adapters and error mapping.
 - `tests/integration/`: PostgreSQL, migrations, APISIX reconciliation, mock upstream calls and metrics.
 - `tests/e2e/`: full request flow through APISIX into Grantora API.
+
+## Release And Deployment Assets
+
+- `.github/workflows/release.yml`: versioned Grantora API image publishing and clean image smoke.
+- `deploy/compose.production.yml`: standalone production compose example with APISIX as the only published service.
+- `deploy/production.env.example`: non-secret production environment template.
+- `docs/release.md`: release, production deployment, upgrade and checklist procedure.
+- `docs/ns8-packaging.md`: NS8 module boundaries that preserve standalone operation.

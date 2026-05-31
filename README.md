@@ -38,6 +38,8 @@ make test-e2e
 make backup-restore-smoke
 make security-scan
 make sbom
+make release-image
+make release-image-smoke
 ```
 
 Integration and e2e tests skip external infrastructure checks unless the documented `GRANTORA_INTEGRATION_*`, `GRANTORA_RUN_E2E=1`, or `GRANTORA_RUN_BACKUP_RESTORE_SMOKE=1` environment variables are set. Provider adapter integration tests use mock `httpx` transports and do not contact real upstream services.
@@ -55,6 +57,10 @@ Supported real provider templates currently include `nethvoice.phonebook.search`
 Security hardening is enabled by default: request bodies are bounded by `MAX_REQUEST_BODY_BYTES`, application base URLs are constrained to safe origins, raw upstream passthrough capabilities are rejected, and admin tokens can be DB-backed and workspace-scoped. Optional OIDC/NS8 admin identity is disabled unless `FEATURE_OIDC=true` and the subject is allowlisted.
 
 Release security gates write artifacts under `dist/security/`: dependency audit JSON, CycloneDX SBOM and container vulnerability JSON. `make container-scan IMAGE=grantora-api:security` requires Trivy and fails on high or critical findings.
+
+Release packaging uses versioned Grantora API container images. `make release-image` builds `ghcr.io/grantora/grantora-api:<version>` from `pyproject.toml`, and `make release-image-smoke` starts that image with migrations disabled and checks that `/healthz` reports the same version. The tag-driven `Release Image` workflow performs the same clean image smoke before pushing versioned and SHA tags to GHCR.
+
+Production deployment examples live under [deploy/](deploy/), starting with [deploy/compose.production.yml](deploy/compose.production.yml). The production compose file publishes only APISIX, keeps PostgreSQL and the APISIX Admin API off host ports, and runs migrations explicitly before starting the API. See [docs/release.md](docs/release.md) for the release checklist and upgrade procedure, and [docs/ns8-packaging.md](docs/ns8-packaging.md) for future NS8 module boundaries.
 
 ## Agent Tooling
 
@@ -93,4 +99,4 @@ For deployments where APISIX terminates TLS, set `GRANTORA_PUBLIC_BASE_URL` to t
 
 ## Development Status
 
-Status: Milestone 16 security hardening implemented. See [PLAN.md](PLAN.md) for the current roadmap status.
+Status: Milestone 17 release packaging and NS8 readiness implemented. See [PLAN.md](PLAN.md) for the current roadmap status.

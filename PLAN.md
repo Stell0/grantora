@@ -43,7 +43,7 @@ Assessed on 2026-05-31 against `src/grantora/`, `tests/unit/`, `CONTRACTS.md`, `
 - [x] The bootstrap path is packaged as `make demo-seed` plus `make smoke` through compose and APISIX. Test: workflow and smoke unit tests cover idempotent seeding and failing checks; full compose remains a manual/e2e check.
 - [x] NethVoice phonebook and Nextcloud files search are implemented as real adapters. Test: each real adapter has unit normalization/error mapping tests and integration tests with mock upstream transports.
 - [x] MCP tool listing is exposed through authenticated runtime HTTP endpoints with a tool-call bridge. Test: runtime MCP endpoint tests and smoke workflow checks verify filtered discovery and invocation.
-- [ ] Production release packaging, image publishing and NS8 module packaging are not defined yet. Security CI now covers dependency audit, SBOM and container scan artifacts. Test: release pipeline creates reproducible artifacts and runs all gates.
+- [x] Production release packaging, image publishing and NS8 module packaging are defined while preserving standalone operation. Security CI covers dependency audit, SBOM and container scan artifacts. Test: release pipeline creates versioned artifacts, smokes `/healthz` version reporting and runs all gates.
 
 ## Full Software Definition
 
@@ -180,12 +180,12 @@ Goal: close security gaps before production release.
 
 Goal: ship a standalone product that can later be managed by an NS8 module.
 
-- [ ] Publish versioned container images for Grantora API. Test: image starts from a clean environment and reports version.
-- [ ] Add production compose or deployment examples with PostgreSQL, APISIX and network isolation. Test: production example passes smoke tests after required secrets are supplied.
-- [ ] Add migration and upgrade procedure for versioned releases. Test: upgrade from previous release fixture to current head preserves data and policy.
-- [ ] Add NS8 packaging design notes without introducing runtime dependency on NS8 internals. Test: standalone compose remains supported.
-- [ ] Add release checklist for contracts, docs, migrations, tests, security scan, backup/restore and changelog. Test: each release candidate completes the checklist.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] Publish versioned container images for Grantora API. Test: image starts from a clean environment and reports version.
+- [x] Add production compose or deployment examples with PostgreSQL, APISIX and network isolation. Test: production example passes smoke tests after required secrets are supplied.
+- [x] Add migration and upgrade procedure for versioned releases. Test: upgrade from previous release fixture to current head preserves data and policy.
+- [x] Add NS8 packaging design notes without introducing runtime dependency on NS8 internals. Test: standalone compose remains supported.
+- [x] Add release checklist for contracts, docs, migrations, tests, security scan, backup/restore and changelog. Test: each release candidate completes the checklist.
+- [x] output git commands to add files and commit changes using a conventional commit
 
 ## Milestone 18 - Product Completion Acceptance
 
@@ -196,6 +196,7 @@ Goal: prove the full software is ready for real administrators and agents.
 - [ ] Agents can discover OpenAPI and MCP-compatible tools filtered by user and authorization. Test: fixture and e2e tests match expected capability set.
 - [ ] Operators can back up and restore PostgreSQL plus environment-managed secrets and regenerate APISIX state. Test: restore smoke test succeeds.
 - [ ] Security regression matrix passes for every release. Test: matrix in `TESTING.md` is automated or explicitly documented as manual with evidence.
+- [ ] The human docs are copied or refined into `README.md` and `OPERATIONS.md`
 - [ ] output git commands to add files and commit changes using a conventional commit 
 
 ## Human Documentation

@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Request, Response, status
 
+from grantora import __version__
+
 router = APIRouter(tags=["health"])
 
 
@@ -10,6 +12,7 @@ def healthz(request: Request) -> dict[str, object]:
         "status": "ok",
         "service": "grantora-api",
         "environment": settings.environment,
+        "version": __version__,
     }
 
 

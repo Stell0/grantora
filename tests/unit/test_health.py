@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from grantora import __version__
 from grantora.config import Settings
 from grantora.main import create_app
 
@@ -30,6 +31,7 @@ def test_healthz_returns_process_status() -> None:
         "status": "ok",
         "service": "grantora-api",
         "environment": "test",
+        "version": __version__,
     }
 
 

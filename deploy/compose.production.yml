@@ -1,0 +1,140 @@
+name: grantora-production
+
+services:
+  grantora-api:
+    image: ${GRANTORA_IMAGE:-ghcr.io/grantora/grantora-api:${GRANTORA_VERSION:?set GRANTORA_VERSION}}
+    restart: unless-stopped
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      apisix-etcd:
+        condition: service_healthy
+    environment:
+      GRANTORA_ENV: ${GRANTORA_ENV:-production}
+      GRANTORA_PUBLIC_BASE_URL: ${GRANTORA_PUBLIC_BASE_URL:?set GRANTORA_PUBLIC_BASE_URL}
+      GRANTORA_BIND_ADDR: 0.0.0.0
+      GRANTORA_PORT: 8080
+      GRANTORA_LOG_LEVEL: ${GRANTORA_LOG_LEVEL:-INFO}
+      GRANTORA_JSON_LOGS: ${GRANTORA_JSON_LOGS:-true}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-grantora}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-grantora}}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-10}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-20}
+      MIGRATIONS_AUTO_RUN: ${MIGRATIONS_AUTO_RUN:-false}
+      APISIX_ADMIN_URL: http://apisix:9180
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?set APISIX_ADMIN_KEY}
+      APISIX_ADMIN_TIMEOUT_SECONDS: ${APISIX_ADMIN_TIMEOUT_SECONDS:-5}
+      APISIX_SYNC_ENABLED: ${APISIX_SYNC_ENABLED:-true}
+      APISIX_SYNC_INTERVAL_SECONDS: ${APISIX_SYNC_INTERVAL_SECONDS:-30}
+      APISIX_FAIL_CLOSED: ${APISIX_FAIL_CLOSED:-true}
+      APISIX_RUNTIME_UPSTREAM_NODE: grantora-api:8080
+      APISIX_RATE_LIMIT_COUNT: ${APISIX_RATE_LIMIT_COUNT:-1000}
+      APISIX_RATE_LIMIT_TIME_WINDOW: ${APISIX_RATE_LIMIT_TIME_WINDOW:-60}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set SECRET_ENCRYPTION_KEY}
+      GRANTORA_AGENT_TOKEN_PEPPER: ${GRANTORA_AGENT_TOKEN_PEPPER:?set GRANTORA_AGENT_TOKEN_PEPPER}
+      GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH: ${GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH:?set GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH}
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-365}
+      USAGE_RETENTION_DAYS: ${USAGE_RETENTION_DAYS:-365}
+      OTEL_TRACING_ENABLED: ${OTEL_TRACING_ENABLED:-false}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-grantora}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_TIMEOUT_SECONDS: ${OTEL_EXPORTER_OTLP_TIMEOUT_SECONDS:-10}
+      REQUEST_ID_HEADER: ${REQUEST_ID_HEADER:-X-Request-Id}
+      MAX_REQUEST_BODY_BYTES: ${MAX_REQUEST_BODY_BYTES:-1048576}
+      DEFAULT_REQUEST_TIMEOUT_SECONDS: ${DEFAULT_REQUEST_TIMEOUT_SECONDS:-30}
+      UPSTREAM_TIMEOUT_SECONDS: ${UPSTREAM_TIMEOUT_SECONDS:-30}
+      UPSTREAM_CONNECT_TIMEOUT_SECONDS: ${UPSTREAM_CONNECT_TIMEOUT_SECONDS:-5}
+      UPSTREAM_TLS_VERIFY: ${UPSTREAM_TLS_VERIFY:-true}
+      UPSTREAM_MAX_RESPONSE_BYTES: ${UPSTREAM_MAX_RESPONSE_BYTES:-10485760}
+      UPSTREAM_READ_RETRY_ATTEMPTS: ${UPSTREAM_READ_RETRY_ATTEMPTS:-2}
+      FEATURE_OIDC: ${FEATURE_OIDC:-false}
+      OIDC_ADMIN_SUBJECTS: ${OIDC_ADMIN_SUBJECTS:-}
+      OIDC_SUBJECT_HEADER: ${OIDC_SUBJECT_HEADER:-X-Grantora-Admin-Subject}
+      FEATURE_EXTERNAL_SECRET_STORE: ${FEATURE_EXTERNAL_SECRET_STORE:-false}
+    expose:
+      - "8080"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2).read()"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - grantora-private
+      - grantora-egress
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-grantora}
+      POSTGRES_USER: ${POSTGRES_USER:-grantora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - grantora-private
+
+  apisix-etcd:
+    image: bitnami/etcd:3.5
+    restart: unless-stopped
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_ADVERTISE_CLIENT_URLS: http://apisix-etcd:2379
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+    volumes:
+      - apisix-etcd-data:/bitnami/etcd
+    expose:
+      - "2379"
+    healthcheck:
+      test:
+        - CMD
+        - etcdctl
+        - endpoint
+        - health
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      grantora-private:
+        aliases:
+          - etcd
+
+  apisix:
+    image: apache/apisix:3.10.0-debian
+    restart: unless-stopped
+    depends_on:
+      apisix-etcd:
+        condition: service_healthy
+    environment:
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?set APISIX_ADMIN_KEY}
+    volumes:
+      - ../containers/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+    ports:
+      - "${APISIX_PUBLIC_PORT:-9080}:9080"
+    networks:
+      - grantora-public
+      - grantora-private
+
+volumes:
+  postgres-data:
+  apisix-etcd-data:
+
+networks:
+  grantora-public:
+  grantora-egress:
+  grantora-private:
+    internal: true

@@ -20,6 +20,8 @@ make backup-restore-smoke
 make security-scan
 make sbom
 make container-scan IMAGE=grantora-api:security
+make release-image
+make release-image-smoke
 ```
 
 Until the Makefile exists, use direct tool commands such as `pytest`, `ruff check`, `ruff format --check` and `alembic upgrade head`.
@@ -52,6 +54,8 @@ Required areas:
 - Structured JSON request logs without authorization headers or secrets
 - Structured JSON runtime decision logs for denied and failed invocation paths
 - Optional OpenTelemetry span emission with safe identifiers only
+- Version reporting through `/healthz`
+- Release image, production compose and release documentation static checks
 - Revoked secret exclusion during secret resolution
 - Upstream timeout and maximum response size enforcement
 - Audit and usage retention pruning commands
@@ -62,6 +66,7 @@ Required areas:
 
 - PostgreSQL connection and session lifecycle
 - Alembic migrations from empty database to head
+- Alembic upgrade from the previous release fixture to head preserving data and policy
 - Admin creation of workspace, agent, user, application, capability, binding and secret
 - Runtime authentication with real database records
 - Invocation path with mock adapter
@@ -127,6 +132,8 @@ raw upstream path passthrough is unavailable by default
 SSRF-prone upstream base URLs are rejected
 oversized request bodies are rejected safely
 dependency audit, SBOM and container scan artifacts are generated for release candidates
+versioned release image starts clean and reports its package version
+production compose does not publish PostgreSQL, Grantora API or APISIX Admin API host ports
 ```
 
 ## Adapter Tests

@@ -192,6 +192,37 @@ Rules:
 
 ## Observability API
 
+### GET /healthz
+
+Returns process liveness for container and load balancer checks.
+
+Response fields:
+
+```json
+{
+  "status": "ok",
+  "service": "grantora-api",
+  "environment": "production",
+  "version": "0.1.0"
+}
+```
+
+Rules:
+
+- Must not require authentication.
+- Must not connect to PostgreSQL or upstream providers.
+- Must include the running Grantora package version so published images can report their version after startup.
+
+### GET /readyz
+
+Returns readiness for serving traffic.
+
+Rules:
+
+- Must not require authentication.
+- Must verify PostgreSQL reachability.
+- Must return a safe error response without stack traces or internal connection details when dependencies are unavailable.
+
 ### GET /metrics
 
 Returns Prometheus-compatible metrics when `METRICS_ENABLED=true`.

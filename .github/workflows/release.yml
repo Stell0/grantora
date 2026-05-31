@@ -1,0 +1,93 @@
+name: Release Image
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  grantora-api-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve release metadata
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(python - <<'PY'
+          import pathlib
+          import tomllib
+
+          project = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']
+          print(project['version'])
+          PY
+          )"
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME#v}" != "${version}" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match pyproject version ${version}" >&2
+            exit 1
+          fi
+          owner="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "image=ghcr.io/${owner}/grantora-api" >> "${GITHUB_OUTPUT}"
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
+
+      - name: Build image
+        run: |
+          docker build \
+            --build-arg GRANTORA_VERSION=${{ steps.release.outputs.version }} \
+            --build-arg VCS_REF=${{ github.sha }} \
+            --build-arg BUILD_DATE=${{ steps.release.outputs.build_date }} \
+            -t grantora-api:${{ steps.release.outputs.version }} \
+            -f containers/grantora-api.Dockerfile .
+
+      - name: Smoke image reports version
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_id="$(docker run --rm -d \
+            -p 127.0.0.1:18080:8080 \
+            -e MIGRATIONS_AUTO_RUN=false \
+            -e DATABASE_URL=sqlite+pysqlite:///:memory: \
+            grantora-api:${{ steps.release.outputs.version }})"
+          cleanup() { docker rm -f "${container_id}" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          for attempt in {1..30}; do
+            body="$(curl -fsS http://127.0.0.1:18080/healthz 2>/dev/null || true)"
+            if printf '%s' "${body}" | grep -q '"version":"${{ steps.release.outputs.version }}"'; then
+              printf '%s\n' "${body}"
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs "${container_id}"
+          exit 1
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish versioned image
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_sha="$(printf '%.12s' '${{ github.sha }}')"
+          docker tag grantora-api:${{ steps.release.outputs.version }} \
+            ${{ steps.release.outputs.image }}:${{ steps.release.outputs.version }}
+          docker tag grantora-api:${{ steps.release.outputs.version }} \
+            ${{ steps.release.outputs.image }}:sha-${short_sha}
+          docker push ${{ steps.release.outputs.image }}:${{ steps.release.outputs.version }}
+          docker push ${{ steps.release.outputs.image }}:sha-${short_sha}

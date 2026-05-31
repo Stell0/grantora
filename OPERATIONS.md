@@ -151,6 +151,32 @@ make container-scan IMAGE=grantora-api:security
 
 External secret references can be submitted with `external_reference` instead of `value` on secret create or rotation. References are stored as encrypted markers. Until an external secret backend is configured, runtime secret resolution fails closed with `secret_unavailable` and never invokes the adapter.
 
+## Release Images And Production Compose
+
+Build and smoke-test the versioned API image before publishing:
+
+```bash
+make release-image REGISTRY=ghcr.io/grantora
+make release-image-smoke REGISTRY=ghcr.io/grantora
+```
+
+`GET /healthz` includes the package version so operators and release workflows can verify that a clean image started with the expected version.
+
+The standalone production example is [deploy/compose.production.yml](deploy/compose.production.yml). It publishes only the APISIX public port, leaves PostgreSQL, APISIX etcd, Grantora API and the APISIX Admin API off host ports, and gives `grantora-api` a separate egress network for adapter calls to approved upstream applications.
+
+Start a production-style deployment with explicit migrations:
+
+```bash
+cp deploy/production.env.example .env.production
+# Edit .env.production with real generated secrets and the desired image tag.
+docker compose --env-file .env.production -f deploy/compose.production.yml pull
+docker compose --env-file .env.production -f deploy/compose.production.yml up -d postgres apisix-etcd
+docker compose --env-file .env.production -f deploy/compose.production.yml run --rm grantora-api python -m alembic upgrade head
+docker compose --env-file .env.production -f deploy/compose.production.yml up -d
+```
+
+Run `make smoke` after configuring an operator-accessible `GRANTORA_API_URL`, the public `GRANTORA_RUNTIME_URL`, and demo/admin credentials for that environment.
+
 ## MCP And Agent Tooling
 
 Grantora's product MCP surface is authenticated HTTP JSON under the runtime API. It is intended for Hermes or generic MCP-aware clients that need a stable tool list and a tool-call bridge without receiving upstream secrets or raw provider URLs.
@@ -434,9 +460,14 @@ If runtime returns `upstream_timeout`, confirm the upstream base URL, `UPSTREAM_
 - Keep old route state safe until APISIX reconciliation succeeds.
 - Preserve backward-compatible error codes unless [CONTRACTS.md](CONTRACTS.md) is updated.
 - Document any required secret rotation or re-encryption step.
+- Back up PostgreSQL plus environment-managed keys and token peppers before changing image tags.
+- Use versioned image tags and verify `/healthz` reports the expected version after startup.
+- Run APISIX reconciliation and smoke checks after every upgrade.
 
-## Future NS8 Packaging Notes
+The complete release and upgrade checklist is maintained in [docs/release.md](docs/release.md).
 
-The NS8 module should package and manage upstream Grantora; it should not fork Grantora logic.
+## NS8 Packaging Notes
 
-The module may generate environment files, manage containers, configure backup and restore, expose actions, integrate with account domains and connect to NS8 UI. The upstream application must continue to run outside NS8 with environment variables and PostgreSQL.
+The NS8 module should package and manage upstream Grantora; it should not fork Grantora logic or become required for standalone operation.
+
+The module may generate environment files, manage containers, configure backup and restore, expose actions, integrate with account domains and connect to NS8 UI. The upstream application must continue to run outside NS8 with environment variables and PostgreSQL. Detailed module boundaries are documented in [docs/ns8-packaging.md](docs/ns8-packaging.md).
