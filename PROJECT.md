@@ -937,6 +937,7 @@ Error messages returned to agents must be safe and must not leak upstream creden
 GET  /v1/me
 GET  /v1/capabilities
 GET  /v1/openapi.json
+GET  /v1/capabilities/openapi.json
 POST /v1/invoke/{capability_id}
 GET  /v1/usage/me
 ```

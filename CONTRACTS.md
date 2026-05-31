@@ -45,6 +45,16 @@ Rules:
 - Return schema and safe metadata only.
 - Do not return upstream URLs, secrets or adapter private configuration.
 
+### GET /v1/openapi.json
+
+Returns the static OpenAPI document for the authenticated runtime API.
+
+Rules:
+
+- Include runtime endpoints only.
+- Do not include admin APIs, health APIs or observability APIs.
+- Do not include upstream URLs, secrets or adapter private configuration.
+
 ### GET /v1/capabilities/openapi.json
 
 Returns a filtered OpenAPI document for the authenticated agent and selected user.
@@ -57,7 +67,19 @@ Rules:
 
 - Include only allowed capabilities.
 - Use stable operation ids derived from capability ids.
+- Include capability-specific invocation paths that map back to capability ids.
 - Do not include admin APIs.
+
+### MCP-compatible tool list
+
+The internal tool-list generator produces MCP-compatible tool descriptors from the same filtered capability set used by `GET /v1/capabilities/openapi.json`.
+
+Rules:
+
+- Tool names are stable and derived from capability ids.
+- Each tool descriptor includes the capability input schema.
+- Each tool descriptor includes metadata mapping back to the Grantora capability id and invocation path.
+- Do not include upstream URLs, secrets or adapter private configuration.
 
 ### POST /v1/invoke/{capability_id}
 

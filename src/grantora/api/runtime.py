@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from time import perf_counter
+from typing import Any
 
 from fastapi import APIRouter, Query, Request, status
 from sqlalchemy.orm import Session
@@ -31,6 +32,7 @@ from grantora.db.queries import (
     list_active_capabilities_for_agent_user,
     role_grants_permission,
 )
+from grantora.openapi import build_capability_openapi, build_runtime_openapi
 from grantora.schemas import (
     AgentSummary,
     CapabilityInvokeRequest,
@@ -65,31 +67,33 @@ def list_capabilities(
     if selected_user is None:
         return CapabilityListResponse(capabilities=[])
 
-    visible_capabilities = []
-    for capability in list_active_capabilities_for_agent_user(
-        session,
-        agent.workspace_id,
-        agent.id,
-        selected_user.id,
-    ):
-        binding = get_active_binding(
-            session,
-            agent.workspace_id,
-            agent.id,
-            selected_user.id,
-            capability.id,
-        )
-        permission_code = invoke_permission_for_risk_class(capability.risk_class)
-        if (
-            binding is None
-            or permission_code is None
-            or not role_grants_permission(session, binding.role_id, DESCRIBE_PERMISSION)
-            or not role_grants_permission(session, binding.role_id, permission_code)
-        ):
-            continue
-        visible_capabilities.append(CapabilitySummary.model_validate(capability))
+    return CapabilityListResponse(
+        capabilities=[
+            CapabilitySummary.model_validate(capability)
+            for capability in _list_visible_capabilities(session, agent, selected_user)
+        ]
+    )
 
-    return CapabilityListResponse(capabilities=visible_capabilities)
+
+@router.get("/openapi.json")
+def get_runtime_openapi(request: Request, agent: AuthenticatedAgent) -> dict[str, Any]:
+    return build_runtime_openapi(request.app.routes)
+
+
+@router.get("/capabilities/openapi.json")
+def get_capability_openapi(
+    agent: AuthenticatedAgent,
+    session: DatabaseSession,
+    user: str = Query(min_length=1),
+) -> dict[str, Any]:
+    selected_user = get_active_user_by_external_id(session, agent.workspace_id, user)
+    if selected_user is None:
+        return build_capability_openapi([], user=user)
+
+    return build_capability_openapi(
+        _list_visible_capabilities(session, agent, selected_user),
+        user=user,
+    )
 
 
 @router.post("/invoke/{capability_id}", response_model=CapabilityInvokeResponse)
@@ -328,6 +332,34 @@ def _get_adapter_registry(request: Request) -> AdapterRegistry:
     if isinstance(adapter_registry, AdapterRegistry):
         return adapter_registry
     return AdapterRegistry()
+
+
+def _list_visible_capabilities(session: Session, agent: Agent, user: User) -> list[Capability]:
+    visible_capabilities = []
+    for capability in list_active_capabilities_for_agent_user(
+        session,
+        agent.workspace_id,
+        agent.id,
+        user.id,
+    ):
+        binding = get_active_binding(
+            session,
+            agent.workspace_id,
+            agent.id,
+            user.id,
+            capability.id,
+        )
+        permission_code = invoke_permission_for_risk_class(capability.risk_class)
+        if (
+            binding is None
+            or permission_code is None
+            or not role_grants_permission(session, binding.role_id, DESCRIBE_PERMISSION)
+            or not role_grants_permission(session, binding.role_id, permission_code)
+        ):
+            continue
+        visible_capabilities.append(capability)
+
+    return visible_capabilities
 
 
 def _build_invocation_context(

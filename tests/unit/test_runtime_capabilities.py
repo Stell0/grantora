@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,7 +30,10 @@ from grantora.db.models import (
     Workspace,
 )
 from grantora.main import create_app
+from grantora.openapi import build_mcp_tool_list
 from grantora.secrets import SecretCipher
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
 @dataclass(frozen=True)
@@ -131,6 +135,63 @@ def test_capability_discovery_returns_only_allowed_safe_metadata(api_context: AP
 
     assert missing_user_response.status_code == 200
     assert missing_user_response.json() == {"capabilities": []}
+
+
+def test_runtime_openapi_route_returns_runtime_schema_only(api_context: APIContext) -> None:
+    add_runtime_records(api_context)
+
+    response = api_context.client.get(
+        "/v1/openapi.json",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+
+    assert response.status_code == 200
+    document = response.json()
+    assert all(not path.startswith("/v1/admin") for path in document["paths"])
+    assert "/healthz" not in document["paths"]
+    assert runtime_openapi_contract(document) == load_json_fixture("runtime_openapi_contract.json")
+
+
+def test_filtered_capability_openapi_matches_allowed_capability_contract(
+    api_context: APIContext,
+) -> None:
+    records = add_runtime_records(api_context)
+    add_unbound_capability(api_context, records)
+    add_disabled_capability_with_binding(api_context, records)
+    add_bound_capability_without_invoke_permission(api_context, records)
+
+    response = api_context.client.get(
+        "/v1/capabilities/openapi.json?user=alice",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == load_json_fixture("filtered_capability_openapi.json")
+    assert "mock.phonebook.unbound" not in response.text
+    assert "mock.phonebook.disabled" not in response.text
+    assert "mock.phonebook.write" not in response.text
+    assert "https://mock.example.test" not in response.text
+
+    missing_user_response = api_context.client.get(
+        "/v1/capabilities/openapi.json?user=mallory",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+
+    assert missing_user_response.status_code == 200
+    assert missing_user_response.json()["paths"] == {}
+
+
+def test_mcp_tool_list_generator_uses_stable_names_and_capability_mapping(
+    api_context: APIContext,
+) -> None:
+    records = add_runtime_records(api_context)
+
+    with api_context.database.session_factory() as session:
+        capability = session.get(Capability, records.capability_id)
+        assert capability is not None
+        tool_list = build_mcp_tool_list([capability])
+
+    assert tool_list == load_json_fixture("mcp_tool_list.json")
 
 
 def test_capability_invocation_validates_authorization_and_reaches_adapter(
@@ -402,6 +463,29 @@ def make_test_settings(tmp_path: Path) -> Settings:
 
 def authorization_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def load_json_fixture(filename: str) -> dict[str, Any]:
+    return json.loads((FIXTURES_DIR / filename).read_text(encoding="utf-8"))
+
+
+def runtime_openapi_contract(document: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "info": document["info"],
+        "paths": {
+            path: {
+                method: {
+                    "operationId": operation.get("operationId"),
+                    "tags": operation.get("tags"),
+                    "parameters": operation.get("parameters", []),
+                    "requestBody": operation.get("requestBody"),
+                    "responses": sorted(operation.get("responses", {}).keys()),
+                }
+                for method, operation in operations.items()
+            }
+            for path, operations in document["paths"].items()
+        },
+    }
 
 
 def phonebook_input_schema() -> dict[str, Any]:

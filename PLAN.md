@@ -60,15 +60,15 @@ This roadmap is the working build order for Grantora. Keep checkboxes current an
 - [x] Add NethVoice phonebook adapter. Test: mock upstream response normalizes to the contact output schema.
 - [x] Enforce result limit and safe field selection. Test: oversized upstream result is trimmed and sensitive fields are excluded.
 - [x] Normalize upstream errors. Test: 401, 404, timeout and 5xx map to safe Grantora error codes.
-- [x] output git commands to add files and commit changes using a conventional commit 
+- [x] output git commands to add files and commit changes using a conventional commit
 
 ## Milestone 6 - MCP/OpenAPI Tool Description
 
-- [ ] Add static runtime OpenAPI route. Test: `/v1/openapi.json` returns the Grantora runtime API schema.
-- [ ] Add filtered capability OpenAPI. Test: agent/user pair sees only allowed capabilities.
-- [ ] Add MCP-compatible tool list generator. Test: generated tool names are stable and map back to capability ids.
-- [ ] Add contract tests for schema stability. Test: intentional API changes require fixture updates.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] Add static runtime OpenAPI route. Test: `/v1/openapi.json` returns the Grantora runtime API schema.
+- [x] Add filtered capability OpenAPI. Test: agent/user pair sees only allowed capabilities.
+- [x] Add MCP-compatible tool list generator. Test: generated tool names are stable and map back to capability ids.
+- [x] Add contract tests for schema stability. Test: intentional API changes require fixture updates.
+- [x] output git commands to add files and commit changes using a conventional commit
 
 ## Milestone 7 - Observability And Hardening
 

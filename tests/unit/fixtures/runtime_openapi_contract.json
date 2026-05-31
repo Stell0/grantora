@@ -1,0 +1,202 @@
+{
+  "info": {
+    "description": "Authenticated runtime API for Grantora agents.",
+    "title": "Grantora Runtime API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/v1/capabilities": {
+      "get": {
+        "operationId": "list_capabilities_v1_capabilities_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "User",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": [
+          "200",
+          "422"
+        ],
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
+    "/v1/capabilities/openapi.json": {
+      "get": {
+        "operationId": "get_capability_openapi_v1_capabilities_openapi_json_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "User",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": [
+          "200",
+          "422"
+        ],
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
+    "/v1/invoke/{capability_id}": {
+      "post": {
+        "operationId": "invoke_capability_v1_invoke__capability_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "capability_id",
+            "required": true,
+            "schema": {
+              "title": "Capability Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CapabilityInvokeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": [
+          "200",
+          "422"
+        ],
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "operationId": "get_me_v1_me_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": [
+          "200",
+          "422"
+        ],
+        "tags": [
+          "runtime"
+        ]
+      }
+    },
+    "/v1/openapi.json": {
+      "get": {
+        "operationId": "get_runtime_openapi_v1_openapi_json_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": [
+          "200",
+          "422"
+        ],
+        "tags": [
+          "runtime"
+        ]
+      }
+    }
+  }
+}

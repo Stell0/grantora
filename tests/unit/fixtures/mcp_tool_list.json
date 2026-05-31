@@ -1,0 +1,30 @@
+{
+  "tools": [
+    {
+      "name": "mock_phonebook_search",
+      "description": "Search phonebook",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      },
+      "_meta": {
+        "grantora/capability_id": "mock.phonebook.search",
+        "grantora/invocation_path": "/v1/invoke/mock.phonebook.search"
+      }
+    }
+  ]
+}
