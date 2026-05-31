@@ -23,6 +23,7 @@ from grantora.capabilities.permissions import DESCRIBE_PERMISSION, RISK_CLASS_PE
 from grantora.config import Settings
 from grantora.db.models import (
     ACTIVE_STATUS,
+    REVOKED_STATUS,
     Agent,
     ApisixSyncStatus,
     ApplicationInstance,
@@ -42,6 +43,8 @@ from grantora.schemas import (
     AdminAgentCreateRequest,
     AdminAgentCreateResponse,
     AdminAgentListResponse,
+    AdminAgentResponse,
+    AdminAgentUpdateRequest,
     AdminApisixStatusResponse,
     AdminApisixSyncResponse,
     AdminApplicationCreateRequest,
@@ -54,6 +57,7 @@ from grantora.schemas import (
     AdminCapabilityCreateRequest,
     AdminCapabilityListResponse,
     AdminCapabilityResponse,
+    AdminLifecycleStatusUpdateRequest,
     AdminPermissionCreateRequest,
     AdminPermissionListResponse,
     AdminPermissionResponse,
@@ -63,6 +67,9 @@ from grantora.schemas import (
     AdminSecretCreateRequest,
     AdminSecretListResponse,
     AdminSecretResponse,
+    AdminSecretRotateRequest,
+    AdminSecretRotationResponse,
+    AdminSecretStatusUpdateRequest,
     AdminUsageListResponse,
     AdminUserCreateRequest,
     AdminUserListResponse,
@@ -124,13 +131,17 @@ def list_workspaces(
     _admin: AdminBootstrap,
     session: DatabaseSession,
     include_disabled: bool = False,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ) -> AdminWorkspaceListResponse:
     statement = select(Workspace).order_by(Workspace.slug)
     if not include_disabled:
         statement = statement.where(Workspace.status == ACTIVE_STATUS)
-    workspaces = session.scalars(statement).all()
+    workspaces = session.scalars(statement.offset(offset).limit(limit)).all()
     return AdminWorkspaceListResponse(
-        workspaces=[WorkspaceAdminSummary.model_validate(workspace) for workspace in workspaces]
+        workspaces=[WorkspaceAdminSummary.model_validate(workspace) for workspace in workspaces],
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -172,17 +183,21 @@ def list_applications(
     session: DatabaseSession,
     workspace_id: UUID | None = None,
     include_disabled: bool = False,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ) -> AdminApplicationListResponse:
     statement = select(ApplicationInstance).order_by(ApplicationInstance.slug)
     if workspace_id is not None:
         statement = statement.where(ApplicationInstance.workspace_id == workspace_id)
     if not include_disabled:
         statement = statement.where(ApplicationInstance.status == ACTIVE_STATUS)
-    applications = session.scalars(statement).all()
+    applications = session.scalars(statement.offset(offset).limit(limit)).all()
     return AdminApplicationListResponse(
         applications=[
             ApplicationAdminSummary.model_validate(application) for application in applications
-        ]
+        ],
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -213,14 +228,37 @@ def list_users(
     session: DatabaseSession,
     workspace_id: UUID | None = None,
     include_disabled: bool = False,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ) -> AdminUserListResponse:
     statement = select(User).order_by(User.external_id)
     if workspace_id is not None:
         statement = statement.where(User.workspace_id == workspace_id)
     if not include_disabled:
         statement = statement.where(User.status == ACTIVE_STATUS)
-    users = session.scalars(statement).all()
-    return AdminUserListResponse(users=[UserAdminSummary.model_validate(user) for user in users])
+    users = session.scalars(statement.offset(offset).limit(limit)).all()
+    return AdminUserListResponse(
+        users=[UserAdminSummary.model_validate(user) for user in users],
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.patch("/users/{user_id}", response_model=AdminUserResponse)
+def update_user_status(
+    user_id: UUID,
+    payload: AdminLifecycleStatusUpdateRequest,
+    request: Request,
+    _admin: AdminBootstrap,
+    session: DatabaseSession,
+) -> AdminUserResponse:
+    user = _get_user_or_404(session, user_id)
+    if payload.status == ACTIVE_STATUS:
+        _get_active_workspace_or_404(session, user.workspace_id)
+    user.status = payload.status
+    _record_admin_audit_event(session, request, workspace_id=user.workspace_id, user_id=user.id)
+    _commit_or_conflict(session, "user_conflict", "User could not be updated")
+    return AdminUserResponse(user=UserAdminSummary.model_validate(user))
 
 
 @router.post(
@@ -287,6 +325,8 @@ def list_admin_capabilities(
     workspace_id: UUID | None = None,
     application_instance_id: UUID | None = None,
     include_disabled: bool = False,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ) -> AdminCapabilityListResponse:
     statement = select(Capability).order_by(Capability.id)
     if workspace_id is not None:
@@ -295,12 +335,43 @@ def list_admin_capabilities(
         statement = statement.where(Capability.application_instance_id == application_instance_id)
     if not include_disabled:
         statement = statement.where(Capability.status == ACTIVE_STATUS)
-    capabilities = session.scalars(statement).all()
+    capabilities = session.scalars(statement.offset(offset).limit(limit)).all()
     return AdminCapabilityListResponse(
         capabilities=[
             CapabilityAdminSummary.model_validate(capability) for capability in capabilities
-        ]
+        ],
+        limit=limit,
+        offset=offset,
     )
+
+
+@router.patch("/capabilities/{capability_id}", response_model=AdminCapabilityResponse)
+def update_capability_status(
+    capability_id: str,
+    payload: AdminLifecycleStatusUpdateRequest,
+    request: Request,
+    _admin: AdminBootstrap,
+    session: DatabaseSession,
+) -> AdminCapabilityResponse:
+    capability = _get_capability_or_404(session, capability_id)
+    if payload.status == ACTIVE_STATUS:
+        workspace = _get_active_workspace_or_404(session, capability.workspace_id)
+        application = _get_active_application_or_404(session, capability.application_instance_id)
+        _require_same_workspace(
+            application.workspace_id,
+            workspace.id,
+            "application_workspace_mismatch",
+        )
+    capability.status = payload.status
+    _record_admin_audit_event(
+        session,
+        request,
+        workspace_id=capability.workspace_id,
+        capability_id=capability.id,
+        application_instance_id=capability.application_instance_id,
+    )
+    _commit_or_conflict(session, "capability_conflict", "Capability could not be updated")
+    return AdminCapabilityResponse(capability=CapabilityAdminSummary.model_validate(capability))
 
 
 @router.post(
@@ -323,14 +394,20 @@ def create_permission(
 def list_permissions(
     _admin: AdminBootstrap,
     session: DatabaseSession,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ) -> AdminPermissionListResponse:
     if _ensure_default_permissions(session):
         session.commit()
-    permissions = session.scalars(select(Permission).order_by(Permission.code)).all()
+    permissions = session.scalars(
+        select(Permission).order_by(Permission.code).offset(offset).limit(limit)
+    ).all()
     return AdminPermissionListResponse(
         permissions=[
             PermissionAdminSummary.model_validate(permission) for permission in permissions
-        ]
+        ],
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -375,14 +452,20 @@ def list_roles(
     session: DatabaseSession,
     workspace_id: UUID | None = None,
     include_disabled: bool = False,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ) -> AdminRoleListResponse:
     statement = select(Role).order_by(Role.slug)
     if workspace_id is not None:
         statement = statement.where(Role.workspace_id == workspace_id)
     if not include_disabled:
         statement = statement.where(Role.status == ACTIVE_STATUS)
-    roles = session.scalars(statement).all()
-    return AdminRoleListResponse(roles=[_role_summary(role) for role in roles])
+    roles = session.scalars(statement.offset(offset).limit(limit)).all()
+    return AdminRoleListResponse(
+        roles=[_role_summary(role) for role in roles],
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post(
@@ -440,6 +523,8 @@ def list_bindings(
     capability_id: str | None = None,
     role_id: UUID | None = None,
     include_disabled: bool = False,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ) -> AdminBindingListResponse:
     statement = select(Binding).order_by(Binding.id)
     if workspace_id is not None:
@@ -454,10 +539,37 @@ def list_bindings(
         statement = statement.where(Binding.role_id == role_id)
     if not include_disabled:
         statement = statement.where(Binding.status == ACTIVE_STATUS)
-    bindings = session.scalars(statement).all()
+    bindings = session.scalars(statement.offset(offset).limit(limit)).all()
     return AdminBindingListResponse(
-        bindings=[BindingAdminSummary.model_validate(binding) for binding in bindings]
+        bindings=[BindingAdminSummary.model_validate(binding) for binding in bindings],
+        limit=limit,
+        offset=offset,
     )
+
+
+@router.patch("/bindings/{binding_id}", response_model=AdminBindingResponse)
+def update_binding_status(
+    binding_id: UUID,
+    payload: AdminLifecycleStatusUpdateRequest,
+    request: Request,
+    _admin: AdminBootstrap,
+    session: DatabaseSession,
+) -> AdminBindingResponse:
+    binding = _get_binding_or_404(session, binding_id)
+    if payload.status == ACTIVE_STATUS:
+        _validate_binding_can_be_active(session, binding)
+    binding.status = payload.status
+    _record_admin_audit_event(
+        session,
+        request,
+        workspace_id=binding.workspace_id,
+        agent_id=binding.agent_id,
+        user_id=binding.user_id,
+        capability_id=binding.capability_id,
+        application_instance_id=binding.capability.application_instance_id,
+    )
+    _commit_or_conflict(session, "binding_conflict", "Binding could not be updated")
+    return AdminBindingResponse(binding=BindingAdminSummary.model_validate(binding))
 
 
 @router.post("/secrets", status_code=status.HTTP_201_CREATED, response_model=AdminSecretResponse)
@@ -518,6 +630,8 @@ def list_secrets(
     owner_type: str | None = None,
     owner_id: UUID | None = None,
     include_revoked: bool = False,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ) -> AdminSecretListResponse:
     statement = select(Secret).order_by(Secret.id)
     if workspace_id is not None:
@@ -530,9 +644,69 @@ def list_secrets(
         statement = statement.where(Secret.owner_id == owner_id)
     if not include_revoked:
         statement = statement.where(Secret.status == ACTIVE_STATUS)
-    secrets = session.scalars(statement).all()
+    secrets = session.scalars(statement.offset(offset).limit(limit)).all()
     return AdminSecretListResponse(
-        secrets=[SecretAdminSummary.model_validate(secret) for secret in secrets]
+        secrets=[SecretAdminSummary.model_validate(secret) for secret in secrets],
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.patch("/secrets/{secret_id}", response_model=AdminSecretResponse)
+def update_secret_status(
+    secret_id: UUID,
+    payload: AdminSecretStatusUpdateRequest,
+    request: Request,
+    _admin: AdminBootstrap,
+    session: DatabaseSession,
+) -> AdminSecretResponse:
+    secret = _get_secret_or_404(session, secret_id)
+    if payload.status == ACTIVE_STATUS:
+        _validate_secret_can_be_active(session, secret)
+    secret.status = payload.status
+    _record_secret_admin_audit_event(session, request, secret)
+    _commit_or_conflict(session, "secret_conflict", "Secret could not be updated")
+    return AdminSecretResponse(secret=SecretAdminSummary.model_validate(secret))
+
+
+@router.post("/secrets/{secret_id}/rotate", response_model=AdminSecretRotationResponse)
+def rotate_secret(
+    secret_id: UUID,
+    payload: AdminSecretRotateRequest,
+    request: Request,
+    _admin: AdminBootstrap,
+    session: DatabaseSession,
+) -> AdminSecretRotationResponse:
+    old_secret = _get_active_secret_or_404(session, secret_id)
+    _validate_secret_can_be_active(session, old_secret)
+    try:
+        encrypted_value = SecretCipher(request.app.state.settings.secret_encryption_key).encrypt(
+            payload.value
+        )
+    except ValueError as exc:
+        raise GrantoraAPIError(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "secret_encryption_unavailable",
+            "Secret encryption is unavailable",
+        ) from exc
+
+    old_secret.status = REVOKED_STATUS
+    replacement = Secret(
+        workspace_id=old_secret.workspace_id,
+        application_instance_id=old_secret.application_instance_id,
+        owner_type=old_secret.owner_type,
+        owner_id=old_secret.owner_id,
+        secret_type=payload.secret_type or old_secret.secret_type,
+        encrypted_value=encrypted_value,
+        status=ACTIVE_STATUS,
+    )
+    session.add(replacement)
+    _flush_or_conflict(session, "secret_conflict", "Secret could not be rotated")
+    _record_secret_admin_audit_event(session, request, replacement)
+    _commit_or_conflict(session, "secret_conflict", "Secret could not be rotated")
+    return AdminSecretRotationResponse(
+        secret=SecretAdminSummary.model_validate(replacement),
+        revoked_secret=SecretAdminSummary.model_validate(old_secret),
     )
 
 
@@ -688,6 +862,8 @@ def list_agents(
     session: DatabaseSession,
     workspace_id: UUID | None = None,
     include_disabled: bool = False,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ) -> AdminAgentListResponse:
     statement = select(Agent).order_by(Agent.slug)
     if workspace_id is not None:
@@ -695,10 +871,29 @@ def list_agents(
     if not include_disabled:
         statement = statement.where(Agent.status == ACTIVE_STATUS)
 
-    agents = session.scalars(statement).all()
+    agents = session.scalars(statement.offset(offset).limit(limit)).all()
     return AdminAgentListResponse(
-        agents=[AgentAdminSummary.model_validate(agent) for agent in agents]
+        agents=[AgentAdminSummary.model_validate(agent) for agent in agents],
+        limit=limit,
+        offset=offset,
     )
+
+
+@router.patch("/agents/{agent_id}", response_model=AdminAgentResponse)
+def update_agent_status(
+    agent_id: UUID,
+    payload: AdminAgentUpdateRequest,
+    request: Request,
+    _admin: AdminBootstrap,
+    session: DatabaseSession,
+) -> AdminAgentResponse:
+    agent = _get_agent_or_404(session, agent_id)
+    if payload.status == ACTIVE_STATUS:
+        _get_active_workspace_or_404(session, agent.workspace_id)
+    agent.status = payload.status
+    _record_admin_audit_event(session, request, workspace_id=agent.workspace_id, agent_id=agent.id)
+    _commit_or_conflict(session, "agent_conflict", "Agent could not be updated")
+    return AdminAgentResponse(agent=AgentAdminSummary.model_validate(agent))
 
 
 @router.post("/apisix/sync", response_model=AdminApisixSyncResponse)
@@ -838,6 +1033,72 @@ def _get_active_role_or_404(session: Session, role_id: UUID) -> Role:
     return role
 
 
+def _get_agent_or_404(session: Session, agent_id: UUID) -> Agent:
+    agent = session.get(Agent, agent_id)
+    if agent is None:
+        raise GrantoraAPIError(
+            status.HTTP_404_NOT_FOUND,
+            "agent_not_found",
+            "Agent was not found",
+        )
+    return agent
+
+
+def _get_user_or_404(session: Session, user_id: UUID) -> User:
+    user = session.get(User, user_id)
+    if user is None:
+        raise GrantoraAPIError(
+            status.HTTP_404_NOT_FOUND,
+            "user_not_found",
+            "User was not found",
+        )
+    return user
+
+
+def _get_capability_or_404(session: Session, capability_id: str) -> Capability:
+    capability = session.get(Capability, capability_id)
+    if capability is None:
+        raise GrantoraAPIError(
+            status.HTTP_404_NOT_FOUND,
+            "capability_not_found",
+            "Capability was not found",
+        )
+    return capability
+
+
+def _get_binding_or_404(session: Session, binding_id: UUID) -> Binding:
+    binding = session.get(Binding, binding_id)
+    if binding is None:
+        raise GrantoraAPIError(
+            status.HTTP_404_NOT_FOUND,
+            "binding_not_found",
+            "Binding was not found",
+        )
+    return binding
+
+
+def _get_secret_or_404(session: Session, secret_id: UUID) -> Secret:
+    secret = session.get(Secret, secret_id)
+    if secret is None:
+        raise GrantoraAPIError(
+            status.HTTP_404_NOT_FOUND,
+            "secret_not_found",
+            "Secret was not found",
+        )
+    return secret
+
+
+def _get_active_secret_or_404(session: Session, secret_id: UUID) -> Secret:
+    secret = _get_secret_or_404(session, secret_id)
+    if secret.status != ACTIVE_STATUS:
+        raise GrantoraAPIError(
+            status.HTTP_404_NOT_FOUND,
+            "secret_not_found",
+            "Secret was not found",
+        )
+    return secret
+
+
 def _require_same_workspace(
     actual_workspace_id: UUID, expected_workspace_id: UUID, code: str
 ) -> None:
@@ -927,6 +1188,44 @@ def _validate_secret_owner(
         status.HTTP_422_UNPROCESSABLE_CONTENT,
         "secret_owner_invalid",
         "Secret owner type is invalid",
+    )
+
+
+def _validate_binding_can_be_active(session: Session, binding: Binding) -> None:
+    workspace = _get_active_workspace_or_404(session, binding.workspace_id)
+    agent = _get_active_agent_or_404(session, binding.agent_id)
+    user = _get_active_user_or_404(session, binding.user_id)
+    capability = _get_active_capability_or_404(session, binding.capability_id)
+    role = _get_active_role_or_404(session, binding.role_id)
+    _require_same_workspace(agent.workspace_id, workspace.id, "agent_workspace_mismatch")
+    _require_same_workspace(user.workspace_id, workspace.id, "user_workspace_mismatch")
+    _require_same_workspace(capability.workspace_id, workspace.id, "capability_workspace_mismatch")
+    _require_same_workspace(role.workspace_id, workspace.id, "role_workspace_mismatch")
+
+
+def _validate_secret_can_be_active(session: Session, secret: Secret) -> None:
+    workspace = _get_active_workspace_or_404(session, secret.workspace_id)
+    application = _get_active_application_or_404(session, secret.application_instance_id)
+    _require_same_workspace(
+        application.workspace_id,
+        workspace.id,
+        "application_workspace_mismatch",
+    )
+    _validate_secret_owner(session, workspace.id, secret.owner_type, secret.owner_id)
+
+
+def _record_secret_admin_audit_event(
+    session: Session,
+    request: Request,
+    secret: Secret,
+) -> None:
+    _record_admin_audit_event(
+        session,
+        request,
+        workspace_id=secret.workspace_id,
+        agent_id=secret.owner_id if secret.owner_type == "agent" else None,
+        user_id=secret.owner_id if secret.owner_type == "user" else None,
+        application_instance_id=secret.application_instance_id,
     )
 
 

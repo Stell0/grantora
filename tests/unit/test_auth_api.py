@@ -49,7 +49,7 @@ def test_admin_bootstrap_authentication_denies_invalid_and_allows_valid_tokens(
     assert invalid_response.status_code == 401
     assert invalid_response.json()["error"]["code"] == "admin_auth_invalid"
     assert valid_response.status_code == 200
-    assert valid_response.json() == {"agents": []}
+    assert valid_response.json() == {"agents": [], "limit": 100, "offset": 0}
 
 
 def test_admin_agent_creation_returns_token_once_and_persists_only_hash(

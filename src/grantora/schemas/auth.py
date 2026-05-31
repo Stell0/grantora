@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+LifecycleStatus = Literal["active", "disabled"]
 
 
 class WorkspaceSummary(BaseModel):
@@ -43,5 +46,15 @@ class AdminAgentCreateResponse(BaseModel):
     token: str
 
 
+class AdminAgentResponse(BaseModel):
+    agent: AgentAdminSummary
+
+
+class AdminAgentUpdateRequest(BaseModel):
+    status: LifecycleStatus
+
+
 class AdminAgentListResponse(BaseModel):
     agents: list[AgentAdminSummary]
+    limit: int
+    offset: int

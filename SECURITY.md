@@ -115,6 +115,7 @@ Logs should include request id, workspace id, agent id, user id, capability id, 
 - Disabled capabilities cannot be discovered or invoked.
 - Disabled bindings deny access immediately.
 - Revoked secrets are not selected by secret resolution.
+- Secret rotation revokes the old active secret and creates the replacement in one committed admin operation; runtime invocation can only select active secrets after the commit.
 - APISIX route sync failures must not open broader access than the last known safe route state.
 
 ## Threat Model Summary

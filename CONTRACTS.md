@@ -38,6 +38,7 @@ Returns capabilities visible to the authenticated agent for a selected user.
 Query parameters:
 
 - `user`: required user external id for user-scoped capabilities.
+- `limit`, `offset`: bounded pagination.
 
 Rules:
 
@@ -121,6 +122,22 @@ Rules:
 
 Returns usage summary for the authenticated agent. It must not expose other agents unless authorized by a future admin contract.
 
+Optional query parameters:
+
+- `user_id`, `capability_id`, `status`: filter the authenticated agent's usage records.
+- `start_time`, `end_time`: inclusive timestamp range filters.
+- `limit`, `offset`: bounded pagination.
+
+Success response includes:
+
+- `usage`: matching usage events for the authenticated agent ordered newest first.
+- `summaries`: aggregates grouped by workspace, agent, user, capability and status with event counts and total units.
+
+Rules:
+
+- The authenticated agent id is always enforced server-side and cannot be overridden.
+- Responses never include bearer tokens, secret values, encrypted values, raw request bodies or upstream response bodies.
+
 ## Observability API
 
 ### GET /metrics
@@ -163,10 +180,14 @@ Required endpoints:
 - `GET /v1/admin/permissions`
 - `POST /v1/admin/agents`
 - `GET /v1/admin/agents`
+- `PATCH /v1/admin/agents/{agent_id}`
 - `POST /v1/admin/bindings`
 - `GET /v1/admin/bindings`
+- `PATCH /v1/admin/bindings/{binding_id}`
 - `POST /v1/admin/secrets`
 - `GET /v1/admin/secrets`
+- `PATCH /v1/admin/secrets/{secret_id}`
+- `POST /v1/admin/secrets/{secret_id}/rotate`
 - `GET /v1/admin/audit`
 - `GET /v1/admin/usage`
 - `POST /v1/admin/apisix/sync`
@@ -216,6 +237,7 @@ Returns workspace metadata.
 Optional query parameters:
 
 - `include_disabled`: include disabled workspaces when true.
+- `limit`, `offset`: bounded pagination.
 
 ### POST /v1/admin/applications
 
@@ -250,6 +272,7 @@ Optional query parameters:
 
 - `workspace_id`: filter to one workspace.
 - `include_disabled`: include disabled application instances when true.
+- `limit`, `offset`: bounded pagination.
 
 ### POST /v1/admin/users
 
@@ -281,6 +304,25 @@ Optional query parameters:
 
 - `workspace_id`: filter to one workspace.
 - `include_disabled`: include disabled users when true.
+- `limit`, `offset`: bounded pagination.
+
+### PATCH /v1/admin/users/{user_id}
+
+Updates a user lifecycle status.
+
+Request body:
+
+```json
+{
+  "status": "disabled"
+}
+```
+
+Rules:
+
+- Valid statuses are `active` and `disabled`.
+- Disabled users are not valid runtime users for discovery or invocation.
+- The update writes a safe admin audit record.
 
 ### POST /v1/admin/capabilities
 
@@ -306,6 +348,26 @@ Optional query parameters:
 - `workspace_id`: filter to one workspace.
 - `application_instance_id`: filter to one application instance.
 - `include_disabled`: include disabled capabilities when true.
+- `limit`, `offset`: bounded pagination.
+
+### PATCH /v1/admin/capabilities/{capability_id}
+
+Updates a capability lifecycle status.
+
+Request body:
+
+```json
+{
+  "status": "disabled"
+}
+```
+
+Rules:
+
+- Valid statuses are `active` and `disabled`.
+- Disabled capabilities cannot be discovered or invoked.
+- Capabilities with `risk_class=admin` are never available through runtime discovery or invocation in the MVP.
+- The update writes a safe admin audit record.
 
 ### POST /v1/admin/permissions
 
@@ -328,6 +390,14 @@ Rules:
 ### GET /v1/admin/permissions
 
 Returns registered permission codes.
+
+Optional query parameters:
+
+- `limit`, `offset`: bounded pagination.
+
+Rules:
+
+- Built-in permission seeding is idempotent and includes exactly `capability.describe`, `capability.invoke.read_only`, `capability.invoke.side_effect` and `capability.invoke.destructive`.
 
 ### POST /v1/admin/roles
 
@@ -364,6 +434,7 @@ Optional query parameters:
 
 - `workspace_id`: filter to one workspace.
 - `include_disabled`: include disabled roles when true.
+- `limit`, `offset`: bounded pagination.
 
 ### POST /v1/admin/bindings
 
@@ -385,6 +456,25 @@ Optional query parameters:
 
 - `workspace_id`, `agent_id`, `user_id`, `capability_id`, `role_id`: filter bindings.
 - `include_disabled`: include disabled bindings when true.
+- `limit`, `offset`: bounded pagination.
+
+### PATCH /v1/admin/bindings/{binding_id}
+
+Updates a binding lifecycle status.
+
+Request body:
+
+```json
+{
+  "status": "disabled"
+}
+```
+
+Rules:
+
+- Valid statuses are `active` and `disabled`.
+- Disabled bindings deny runtime discovery and invocation immediately.
+- The update writes a safe admin audit record.
 
 ### POST /v1/admin/secrets
 
@@ -421,6 +511,48 @@ Optional query parameters:
 
 - `workspace_id`, `application_instance_id`, `owner_type`, `owner_id`: filter secrets.
 - `include_revoked`: include revoked secrets when true.
+- `limit`, `offset`: bounded pagination.
+
+### PATCH /v1/admin/secrets/{secret_id}
+
+Updates a secret status.
+
+Request body:
+
+```json
+{
+  "status": "revoked"
+}
+```
+
+Rules:
+
+- Valid statuses are `active` and `revoked`.
+- Revoked secrets are not selected during runtime invocation.
+- The update writes a safe admin audit record.
+
+### POST /v1/admin/secrets/{secret_id}/rotate
+
+Revokes an active secret and creates a replacement in one transaction.
+
+Request body:
+
+```json
+{
+  "value": "new-plaintext-secret",
+  "secret_type": "bearer_token"
+}
+```
+
+Success response includes metadata for the replacement `secret` and the `revoked_secret`. `secret_type` is optional and defaults to the old secret type.
+
+Rules:
+
+- The old secret must exist and be active.
+- The replacement uses the same workspace, application instance, owner type and owner id as the old secret.
+- The old secret is revoked before commit and cannot be selected by runtime invocation after the rotation commits.
+- Plaintext and encrypted secret values are never returned.
+- The update writes a safe admin audit record.
 
 ### GET /v1/admin/audit
 
@@ -499,6 +631,26 @@ Returns agent metadata for admin inspection. It never returns plaintext tokens o
 Optional query parameters:
 
 - `workspace_id`: filter agents to one workspace.
+- `include_disabled`: include disabled agents when true.
+- `limit`, `offset`: bounded pagination.
+
+### PATCH /v1/admin/agents/{agent_id}
+
+Updates an agent lifecycle status.
+
+Request body:
+
+```json
+{
+  "status": "disabled"
+}
+```
+
+Rules:
+
+- Valid statuses are `active` and `disabled`.
+- Disabled agents fail runtime authentication immediately.
+- The update writes a safe admin audit record.
 
 ### POST /v1/admin/apisix/sync
 

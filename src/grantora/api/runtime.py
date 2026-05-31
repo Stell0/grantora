@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime
 from time import perf_counter
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from grantora.adapters import (
@@ -24,7 +27,7 @@ from grantora.capabilities import (
     invoke_permission_for_risk_class,
     validate_json_schema,
 )
-from grantora.db.models import ACTIVE_STATUS, Agent, Capability, User
+from grantora.db.models import ACTIVE_STATUS, Agent, Capability, UsageEvent, User
 from grantora.db.queries import (
     get_active_binding,
     get_active_capability_by_id,
@@ -41,6 +44,9 @@ from grantora.schemas import (
     CapabilityListResponse,
     CapabilitySummary,
     MeResponse,
+    RuntimeUsageAggregateSummary,
+    RuntimeUsageEventSummary,
+    UsageMeResponse,
     WorkspaceSummary,
 )
 from grantora.secrets import SecretResolutionError, resolve_secret_material
@@ -63,16 +69,22 @@ def list_capabilities(
     agent: AuthenticatedAgent,
     session: DatabaseSession,
     user: str = Query(min_length=1),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ) -> CapabilityListResponse:
     selected_user = get_active_user_by_external_id(session, agent.workspace_id, user)
     if selected_user is None:
-        return CapabilityListResponse(capabilities=[])
+        return CapabilityListResponse(capabilities=[], limit=limit, offset=offset)
+
+    visible_capabilities = _list_visible_capabilities(session, agent, selected_user)
 
     return CapabilityListResponse(
         capabilities=[
             CapabilitySummary.model_validate(capability)
-            for capability in _list_visible_capabilities(session, agent, selected_user)
-        ]
+            for capability in visible_capabilities[offset : offset + limit]
+        ],
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -94,6 +106,76 @@ def get_capability_openapi(
     return build_capability_openapi(
         _list_visible_capabilities(session, agent, selected_user),
         user=user,
+    )
+
+
+@router.get("/usage/me", response_model=UsageMeResponse)
+def get_usage_me(
+    agent: AuthenticatedAgent,
+    session: DatabaseSession,
+    user_id: UUID | None = None,
+    capability_id: str | None = None,
+    status_filter: str | None = Query(default=None, alias="status"),
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+) -> UsageMeResponse:
+    filters = _usage_filters_for_agent(
+        agent,
+        user_id=user_id,
+        capability_id=capability_id,
+        status_filter=status_filter,
+        start_time=start_time,
+        end_time=end_time,
+    )
+    usage_statement = (
+        select(UsageEvent)
+        .where(*filters)
+        .order_by(UsageEvent.timestamp.desc(), UsageEvent.id.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    summary_statement = (
+        select(
+            UsageEvent.workspace_id,
+            UsageEvent.agent_id,
+            UsageEvent.user_id,
+            UsageEvent.capability_id,
+            UsageEvent.status,
+            func.count(UsageEvent.id),
+            func.coalesce(func.sum(UsageEvent.units), 0),
+        )
+        .where(*filters)
+        .group_by(
+            UsageEvent.workspace_id,
+            UsageEvent.agent_id,
+            UsageEvent.user_id,
+            UsageEvent.capability_id,
+            UsageEvent.status,
+        )
+        .order_by(UsageEvent.status)
+    )
+    summaries = [
+        RuntimeUsageAggregateSummary(
+            workspace_id=row[0],
+            agent_id=row[1],
+            user_id=row[2],
+            capability_id=row[3],
+            status=row[4],
+            events=row[5],
+            total_units=row[6],
+        )
+        for row in session.execute(summary_statement).all()
+    ]
+    return UsageMeResponse(
+        usage=[
+            RuntimeUsageEventSummary.model_validate(event)
+            for event in session.scalars(usage_statement)
+        ],
+        summaries=summaries,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -395,6 +477,32 @@ def _build_invocation_context(
         ),
         capability=CapabilityContext(id=capability.id, operation=capability.operation),
     )
+
+
+def _usage_filters_for_agent(
+    agent: Agent,
+    *,
+    user_id: UUID | None,
+    capability_id: str | None,
+    status_filter: str | None,
+    start_time: datetime | None,
+    end_time: datetime | None,
+) -> list[object]:
+    filters: list[object] = [
+        UsageEvent.workspace_id == agent.workspace_id,
+        UsageEvent.agent_id == agent.id,
+    ]
+    if user_id is not None:
+        filters.append(UsageEvent.user_id == user_id)
+    if capability_id is not None:
+        filters.append(UsageEvent.capability_id == capability_id)
+    if status_filter is not None:
+        filters.append(UsageEvent.status == status_filter)
+    if start_time is not None:
+        filters.append(UsageEvent.timestamp >= start_time)
+    if end_time is not None:
+        filters.append(UsageEvent.timestamp <= end_time)
+    return filters
 
 
 def _record_and_raise_invocation_error(

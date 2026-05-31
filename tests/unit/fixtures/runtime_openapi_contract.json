@@ -1,27 +1,20 @@
 {
   "info": {
-    "description": "Authenticated runtime API for Grantora agents.",
     "title": "Grantora Runtime API",
+    "description": "Authenticated runtime API for Grantora agents.",
     "version": "0.1.0"
   },
   "paths": {
-    "/v1/capabilities": {
+    "/v1/me": {
       "get": {
-        "operationId": "list_capabilities_v1_capabilities_get",
+        "operationId": "get_me_v1_me_get",
+        "tags": [
+          "runtime"
+        ],
         "parameters": [
           {
-            "in": "query",
-            "name": "user",
-            "required": true,
-            "schema": {
-              "minLength": 1,
-              "title": "User",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
             "name": "Authorization",
+            "in": "header",
             "required": false,
             "schema": {
               "anyOf": [
@@ -40,29 +33,124 @@
         "responses": [
           "200",
           "422"
-        ],
+        ]
+      }
+    },
+    "/v1/capabilities": {
+      "get": {
+        "operationId": "list_capabilities_v1_capabilities_get",
         "tags": [
           "runtime"
+        ],
+        "parameters": [
+          {
+            "name": "user",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "User"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": [
+          "200",
+          "422"
+        ]
+      }
+    },
+    "/v1/openapi.json": {
+      "get": {
+        "operationId": "get_runtime_openapi_v1_openapi_json_get",
+        "tags": [
+          "runtime"
+        ],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": [
+          "200",
+          "422"
         ]
       }
     },
     "/v1/capabilities/openapi.json": {
       "get": {
         "operationId": "get_capability_openapi_v1_capabilities_openapi_json_get",
+        "tags": [
+          "runtime"
+        ],
         "parameters": [
           {
-            "in": "query",
             "name": "user",
+            "in": "query",
             "required": true,
             "schema": {
+              "type": "string",
               "minLength": 1,
-              "title": "User",
-              "type": "string"
+              "title": "User"
             }
           },
           {
-            "in": "header",
             "name": "Authorization",
+            "in": "header",
             "required": false,
             "schema": {
               "anyOf": [
@@ -81,28 +169,165 @@
         "responses": [
           "200",
           "422"
-        ],
+        ]
+      }
+    },
+    "/v1/usage/me": {
+      "get": {
+        "operationId": "get_usage_me_v1_usage_me_get",
         "tags": [
           "runtime"
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "capability_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Capability Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "start_time",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Time"
+            }
+          },
+          {
+            "name": "end_time",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": null,
+        "responses": [
+          "200",
+          "422"
         ]
       }
     },
     "/v1/invoke/{capability_id}": {
       "post": {
         "operationId": "invoke_capability_v1_invoke__capability_id__post",
+        "tags": [
+          "runtime"
+        ],
         "parameters": [
           {
-            "in": "path",
             "name": "capability_id",
+            "in": "path",
             "required": true,
             "schema": {
-              "title": "Capability Id",
-              "type": "string"
+              "type": "string",
+              "title": "Capability Id"
             }
           },
           {
-            "in": "header",
             "name": "Authorization",
+            "in": "header",
             "required": false,
             "schema": {
               "anyOf": [
@@ -118,83 +343,18 @@
           }
         ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CapabilityInvokeRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": [
           "200",
           "422"
-        ],
-        "tags": [
-          "runtime"
-        ]
-      }
-    },
-    "/v1/me": {
-      "get": {
-        "operationId": "get_me_v1_me_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "Authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": null,
-        "responses": [
-          "200",
-          "422"
-        ],
-        "tags": [
-          "runtime"
-        ]
-      }
-    },
-    "/v1/openapi.json": {
-      "get": {
-        "operationId": "get_runtime_openapi_v1_openapi_json_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "Authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": null,
-        "responses": [
-          "200",
-          "422"
-        ],
-        "tags": [
-          "runtime"
         ]
       }
     }

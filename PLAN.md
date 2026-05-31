@@ -35,7 +35,7 @@ Assessed on 2026-05-31 against `src/grantora/`, `tests/unit/`, `CONTRACTS.md`, `
 
 ### Confirmed Gaps
 
-- [ ] `GET /v1/usage/me` is contracted in `STRUCTURE.md` and `CONTRACTS.md` but not implemented. Test: runtime usage summary tests for authenticated agent scope.
+- [x] `GET /v1/usage/me` is contracted in `STRUCTURE.md` and `CONTRACTS.md` and implemented for authenticated agent scope. Test: runtime usage summary tests for authenticated agent scope.
 - [ ] There are no `tests/integration/` or `tests/e2e/` flows yet. Test: add PostgreSQL, APISIX and full-through-APISIX suites.
 - [ ] Compose exposes settings such as `MIGRATIONS_AUTO_RUN`, `APISIX_SYNC_ENABLED`, `APISIX_SYNC_INTERVAL_SECONDS`, `APISIX_FAIL_CLOSED`, retention values and feature flags that are not fully wired in code. Test: settings contract tests document which variables are active and which are reserved.
 - [ ] The Docker image starts Uvicorn directly and does not run Alembic migrations even when `MIGRATIONS_AUTO_RUN=true`. Test: container startup test or entrypoint test proves the selected migration behavior.
@@ -77,20 +77,20 @@ Goal: make Grantora fully configurable without direct database inserts.
 - [x] Add `GET /v1/admin/usage` with filters and aggregate summaries by workspace, agent, user, capability and status. Test: denied/success/error usage events aggregate correctly.
 - [x] Record admin audit events for security-relevant changes: agents, roles, bindings, secrets, applications and capabilities. Test: each admin mutation writes a safe audit event with request id and actor type.
 - [x] Add admin response schemas and fixtures for stable contract coverage. Test: intentional API changes require fixture updates.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] output git commands to add files and commit changes using a conventional commit 
 
 ## Milestone 9 - Runtime Usage, Lifecycle And Safety
 
 Goal: finish runtime endpoints and lifecycle controls expected by agents and operators.
 
-- [ ] Implement `GET /v1/usage/me` for authenticated agents. Test: agent sees only its own usage and cannot infer other agents' usage.
-- [ ] Add agent disable/revoke or status update endpoint. Test: disabled agents immediately fail runtime authentication.
-- [ ] Add capability, binding, user and secret status update endpoints. Test: disabling each object immediately affects discovery and invocation.
-- [ ] Add secret rotation flow that creates a replacement and revokes the old secret atomically. Test: invocation uses the new active secret and never selects revoked secrets.
-- [ ] Add deterministic permission seeding for `capability.describe`, `capability.invoke.read_only`, `capability.invoke.side_effect` and `capability.invoke.destructive`. Test: migrations or startup seed are idempotent.
-- [ ] Make `admin` risk capabilities unavailable to runtime agents unless a future explicit contract is approved. Test: admin-risk capability cannot be discovered or invoked through runtime APIs.
-- [ ] Add response pagination where lists can grow: capabilities, audit, usage and admin resources. Test: cursor or limit/offset behavior is stable and bounded.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] Implement `GET /v1/usage/me` for authenticated agents. Test: agent sees only its own usage and cannot infer other agents' usage.
+- [x] Add agent disable/revoke or status update endpoint. Test: disabled agents immediately fail runtime authentication.
+- [x] Add capability, binding, user and secret status update endpoints. Test: disabling each object immediately affects discovery and invocation.
+- [x] Add secret rotation flow that creates a replacement and revokes the old secret atomically. Test: invocation uses the new active secret and never selects revoked secrets.
+- [x] Add deterministic permission seeding for `capability.describe`, `capability.invoke.read_only`, `capability.invoke.side_effect` and `capability.invoke.destructive`. Test: migrations or startup seed are idempotent.
+- [x] Make `admin` risk capabilities unavailable to runtime agents unless a future explicit contract is approved. Test: admin-risk capability cannot be discovered or invoked through runtime APIs.
+- [x] Add response pagination where lists can grow: capabilities, audit, usage and admin resources. Test: cursor or limit/offset behavior is stable and bounded.
+- [x] output git commands to add files and commit changes using a conventional commit 
 
 ## Milestone 10 - Bootstrap, Seeding And Human Workflow
 

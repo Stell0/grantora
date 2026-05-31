@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,6 +24,8 @@ class CapabilitySummary(BaseModel):
 
 class CapabilityListResponse(BaseModel):
     capabilities: list[CapabilitySummary]
+    limit: int
+    offset: int
 
 
 class CapabilityInvokeRequest(BaseModel):
@@ -34,3 +38,35 @@ class CapabilityInvokeResponse(BaseModel):
     capability: str
     status: Literal["ok"]
     data: dict[str, Any]
+
+
+class RuntimeUsageEventSummary(BaseModel):
+    id: UUID
+    timestamp: datetime
+    workspace_id: UUID
+    agent_id: UUID
+    user_id: UUID | None
+    capability_id: str
+    application_instance_id: UUID | None
+    units: int
+    status: str
+    latency_ms: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RuntimeUsageAggregateSummary(BaseModel):
+    workspace_id: UUID
+    agent_id: UUID
+    user_id: UUID | None
+    capability_id: str
+    status: str
+    events: int
+    total_units: int
+
+
+class UsageMeResponse(BaseModel):
+    usage: list[RuntimeUsageEventSummary]
+    summaries: list[RuntimeUsageAggregateSummary]
+    limit: int
+    offset: int

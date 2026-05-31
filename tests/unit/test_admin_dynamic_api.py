@@ -38,6 +38,8 @@ class BootstrapRecords:
     role_id: UUID
     agent_id: UUID
     agent_token: str
+    binding_id: UUID
+    secret_id: UUID
 
 
 @pytest.fixture()
@@ -373,7 +375,7 @@ def test_admin_dynamic_bootstrap_flow_is_safe_and_runtime_visible(
         "mock.phonebook.search"
     ]
     assert disabled_user_capabilities.status_code == 200
-    assert disabled_user_capabilities.json() == {"capabilities": []}
+    assert disabled_user_capabilities.json() == {"capabilities": [], "limit": 100, "offset": 0}
 
 
 def test_admin_audit_and_usage_queries_are_filtered_and_summarized(
@@ -451,6 +453,167 @@ def test_admin_audit_and_usage_queries_are_filtered_and_summarized(
     )
 
 
+def test_admin_lifecycle_updates_immediately_affect_runtime(
+    api_context: APIContext,
+) -> None:
+    records = bootstrap_runtime_records(api_context)
+
+    agents_page = api_context.client.get(
+        f"/v1/admin/agents?workspace_id={records.workspace_id}&limit=1&offset=0",
+        headers=authorization_headers("admin-token"),
+    )
+    binding_disabled = patch_admin(
+        api_context,
+        f"/v1/admin/bindings/{records.binding_id}",
+        {"status": "disabled"},
+        request_id="req_binding_disable",
+    )["binding"]
+    binding_capabilities = api_context.client.get(
+        "/v1/capabilities?user=alice",
+        headers=authorization_headers(records.agent_token),
+    )
+    binding_denied = api_context.client.post(
+        f"/v1/invoke/{records.capability_id}",
+        headers={
+            **authorization_headers(records.agent_token),
+            "X-Request-Id": "req_binding_disabled_invoke",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+
+    assert agents_page.status_code == 200
+    assert agents_page.json()["limit"] == 1
+    assert agents_page.json()["offset"] == 0
+    assert [agent["id"] for agent in agents_page.json()["agents"]] == [str(records.agent_id)]
+    assert binding_disabled["status"] == "disabled"
+    assert binding_capabilities.json() == {"capabilities": [], "limit": 100, "offset": 0}
+    assert binding_denied.status_code == 403
+    assert binding_denied.json()["error"]["code"] == "capability_denied"
+
+    patch_admin(
+        api_context,
+        f"/v1/admin/bindings/{records.binding_id}",
+        {"status": "active"},
+    )
+    capability_disabled = patch_admin(
+        api_context,
+        f"/v1/admin/capabilities/{records.capability_id}",
+        {"status": "disabled"},
+    )["capability"]
+    capability_denied = api_context.client.post(
+        f"/v1/invoke/{records.capability_id}",
+        headers={
+            **authorization_headers(records.agent_token),
+            "X-Request-Id": "req_capability_disabled_invoke",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+
+    assert capability_disabled["status"] == "disabled"
+    assert capability_denied.status_code == 403
+    assert capability_denied.json()["error"]["code"] == "capability_denied"
+
+    patch_admin(
+        api_context,
+        f"/v1/admin/capabilities/{records.capability_id}",
+        {"status": "active"},
+    )
+    user_disabled = patch_admin(
+        api_context,
+        f"/v1/admin/users/{records.user_id}",
+        {"status": "disabled"},
+    )["user"]
+    user_capabilities = api_context.client.get(
+        "/v1/capabilities?user=alice",
+        headers=authorization_headers(records.agent_token),
+    )
+
+    assert user_disabled["status"] == "disabled"
+    assert user_capabilities.json() == {"capabilities": [], "limit": 100, "offset": 0}
+
+    patch_admin(
+        api_context,
+        f"/v1/admin/users/{records.user_id}",
+        {"status": "active"},
+    )
+    secret_revoked = patch_admin(
+        api_context,
+        f"/v1/admin/secrets/{records.secret_id}",
+        {"status": "revoked"},
+    )["secret"]
+    secret_denied = api_context.client.post(
+        f"/v1/invoke/{records.capability_id}",
+        headers={
+            **authorization_headers(records.agent_token),
+            "X-Request-Id": "req_secret_revoked_invoke",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+    visible_secrets = api_context.client.get(
+        f"/v1/admin/secrets?workspace_id={records.workspace_id}",
+        headers=authorization_headers("admin-token"),
+    )
+    all_secrets = api_context.client.get(
+        f"/v1/admin/secrets?workspace_id={records.workspace_id}&include_revoked=true",
+        headers=authorization_headers("admin-token"),
+    )
+
+    assert secret_revoked["status"] == "revoked"
+    assert secret_denied.status_code == 424
+    assert secret_denied.json()["error"]["code"] == "secret_not_found"
+    visible_secret_ids = {UUID(secret["id"]) for secret in visible_secrets.json()["secrets"]}
+    all_secret_ids = {UUID(secret["id"]) for secret in all_secrets.json()["secrets"]}
+    assert records.secret_id not in visible_secret_ids
+    assert records.secret_id in all_secret_ids
+
+    agent_disabled = patch_admin(
+        api_context,
+        f"/v1/admin/agents/{records.agent_id}",
+        {"status": "disabled"},
+    )["agent"]
+    me_response = api_context.client.get(
+        "/v1/me",
+        headers=authorization_headers(records.agent_token),
+    )
+
+    assert agent_disabled["status"] == "disabled"
+    assert me_response.status_code == 401
+    assert me_response.json()["error"]["code"] == "agent_auth_invalid"
+
+    with api_context.database.session_factory() as session:
+        audit_event = session.scalar(
+            select(AuditEvent).where(AuditEvent.request_id == "req_binding_disable")
+        )
+
+    assert audit_event is not None
+    assert audit_event.actor_type == "admin_bootstrap"
+    assert audit_event.decision == "allow"
+
+
+def test_default_permissions_seed_idempotently(api_context: APIContext) -> None:
+    expected_codes = [
+        "capability.describe",
+        "capability.invoke.destructive",
+        "capability.invoke.read_only",
+        "capability.invoke.side_effect",
+    ]
+
+    first_response = api_context.client.get(
+        "/v1/admin/permissions?limit=10&offset=0",
+        headers=authorization_headers("admin-token"),
+    )
+    second_response = api_context.client.get(
+        "/v1/admin/permissions?limit=10&offset=0",
+        headers=authorization_headers("admin-token"),
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    first_codes = [permission["code"] for permission in first_response.json()["permissions"]]
+    assert first_codes == expected_codes
+    assert second_response.json() == first_response.json()
+
+
 def bootstrap_runtime_records(api_context: APIContext) -> BootstrapRecords:
     workspace = post_admin(
         api_context,
@@ -498,7 +661,7 @@ def bootstrap_runtime_records(api_context: APIContext) -> BootstrapRecords:
         {"workspace_id": str(workspace_id), "slug": "hermes-alice", "display_name": "Hermes Alice"},
     )
     agent_id = UUID(agent_response["agent"]["id"])
-    post_admin(
+    binding = post_admin(
         api_context,
         "/v1/admin/bindings",
         {
@@ -508,8 +671,8 @@ def bootstrap_runtime_records(api_context: APIContext) -> BootstrapRecords:
             "capability_id": capability["id"],
             "role_id": str(role_id),
         },
-    )
-    post_admin(
+    )["binding"]
+    secret = post_admin(
         api_context,
         "/v1/admin/secrets",
         {
@@ -520,7 +683,7 @@ def bootstrap_runtime_records(api_context: APIContext) -> BootstrapRecords:
             "secret_type": "bearer_token",
             "value": "upstream-user-token",
         },
-    )
+    )["secret"]
     return BootstrapRecords(
         workspace_id=workspace_id,
         application_id=application_id,
@@ -529,6 +692,8 @@ def bootstrap_runtime_records(api_context: APIContext) -> BootstrapRecords:
         role_id=role_id,
         agent_id=agent_id,
         agent_token=agent_response["token"],
+        binding_id=UUID(binding["id"]),
+        secret_id=UUID(secret["id"]),
     )
 
 
@@ -544,6 +709,21 @@ def post_admin(
         headers["X-Request-Id"] = request_id
     response = api_context.client.post(path, headers=headers, json=payload)
     assert response.status_code in {200, 201}, response.text
+    return response.json()
+
+
+def patch_admin(
+    api_context: APIContext,
+    path: str,
+    payload: dict[str, Any],
+    *,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    headers = authorization_headers("admin-token")
+    if request_id is not None:
+        headers["X-Request-Id"] = request_id
+    response = api_context.client.patch(path, headers=headers, json=payload)
+    assert response.status_code == 200, response.text
     return response.json()
 
 

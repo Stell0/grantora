@@ -123,7 +123,9 @@ def test_capability_discovery_returns_only_allowed_safe_metadata(api_context: AP
                 "output_schema": phonebook_output_schema(),
                 "status": "active",
             }
-        ]
+        ],
+        "limit": 100,
+        "offset": 0,
     }
     assert "secret" not in response.text
     assert "https://mock.example.test" not in response.text
@@ -134,7 +136,68 @@ def test_capability_discovery_returns_only_allowed_safe_metadata(api_context: AP
     )
 
     assert missing_user_response.status_code == 200
-    assert missing_user_response.json() == {"capabilities": []}
+    assert missing_user_response.json() == {"capabilities": [], "limit": 100, "offset": 0}
+
+
+def test_capability_discovery_is_paginated(api_context: APIContext) -> None:
+    records = add_runtime_records(api_context)
+    add_second_bound_capability(api_context, records)
+
+    response = api_context.client.get(
+        "/v1/capabilities?user=alice&limit=1&offset=1",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "capabilities": [
+            {
+                "id": "mock.phonebook.search.extra",
+                "name": "Search extra phonebook",
+                "version": 1,
+                "provider_type": "mock",
+                "operation": "phonebook.search.extra",
+                "auth_mode": "user",
+                "risk_class": "read_only",
+                "input_schema": phonebook_input_schema(),
+                "output_schema": phonebook_output_schema(),
+                "status": "active",
+            }
+        ],
+        "limit": 1,
+        "offset": 1,
+    }
+
+
+def test_admin_risk_capability_is_not_runtime_visible_or_invokable(
+    api_context: APIContext,
+) -> None:
+    records = add_runtime_records(api_context)
+    add_admin_risk_capability(api_context, records)
+    add_secret(
+        api_context, records, owner_type="user", owner_id=records.user_id, value="user-token"
+    )
+
+    discovery_response = api_context.client.get(
+        "/v1/capabilities?user=alice",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+    invoke_response = api_context.client.post(
+        "/v1/invoke/mock.admin.maintenance",
+        headers={
+            **authorization_headers("grt_agent_runtime"),
+            "X-Request-Id": "req_admin_risk_denied",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+
+    assert discovery_response.status_code == 200
+    assert [capability["id"] for capability in discovery_response.json()["capabilities"]] == [
+        "mock.phonebook.search"
+    ]
+    assert invoke_response.status_code == 403
+    assert invoke_response.json()["error"]["code"] == "capability_denied"
+    assert api_context.adapter.calls == []
 
 
 def test_runtime_openapi_route_returns_runtime_schema_only(api_context: APIContext) -> None:
@@ -179,6 +242,45 @@ def test_filtered_capability_openapi_matches_allowed_capability_contract(
 
     assert missing_user_response.status_code == 200
     assert missing_user_response.json()["paths"] == {}
+
+
+def test_runtime_usage_me_is_scoped_to_authenticated_agent(api_context: APIContext) -> None:
+    records = add_runtime_records(api_context)
+    add_secret(
+        api_context, records, owner_type="user", owner_id=records.user_id, value="user-token"
+    )
+
+    invocation_response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.search",
+        headers={**authorization_headers("grt_agent_runtime"), "X-Request-Id": "req_usage_me"},
+        json={"user": "alice", "input": {"query": "Mario", "limit": 5}},
+    )
+    add_other_agent_usage_event(api_context, records)
+
+    response = api_context.client.get(
+        "/v1/usage/me?status=success&limit=10&offset=0",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+
+    assert invocation_response.status_code == 200
+    assert response.status_code == 200
+    body = response.json()
+    assert body["limit"] == 10
+    assert body["offset"] == 0
+    assert [event["agent_id"] for event in body["usage"]] == [str(records.agent_id)]
+    assert body["usage"][0]["user_id"] == str(records.user_id)
+    assert body["usage"][0]["capability_id"] == records.capability_id
+    assert body["summaries"] == [
+        {
+            "workspace_id": str(records.workspace_id),
+            "agent_id": str(records.agent_id),
+            "user_id": str(records.user_id),
+            "capability_id": records.capability_id,
+            "status": "success",
+            "events": 1,
+            "total_units": 2,
+        }
+    ]
 
 
 def test_mcp_tool_list_generator_uses_stable_names_and_capability_mapping(
@@ -435,6 +537,48 @@ def test_revoked_secret_is_not_selected_for_invocation(api_context: APIContext) 
 
     assert response.status_code == 200
     assert api_context.adapter.calls[0]["secret_value"] == "active-token"
+
+
+def test_admin_secret_rotation_revokes_old_secret_and_uses_replacement(
+    api_context: APIContext,
+) -> None:
+    records = add_runtime_records(api_context)
+    old_secret_id = add_secret(
+        api_context, records, owner_type="user", owner_id=records.user_id, value="old-token"
+    )
+
+    rotate_response = api_context.client.post(
+        f"/v1/admin/secrets/{old_secret_id}/rotate",
+        headers=authorization_headers("admin-token"),
+        json={"value": "new-token"},
+    )
+    invoke_response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.search",
+        headers={
+            **authorization_headers("grt_agent_runtime"),
+            "X-Request-Id": "req_rotated_secret",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+
+    assert rotate_response.status_code == 200
+    rotation_body = rotate_response.json()
+    assert rotation_body["revoked_secret"]["id"] == str(old_secret_id)
+    assert rotation_body["revoked_secret"]["status"] == "revoked"
+    assert rotation_body["secret"]["status"] == "active"
+    assert "old-token" not in rotate_response.text
+    assert "new-token" not in rotate_response.text
+    assert invoke_response.status_code == 200
+    assert api_context.adapter.calls[0]["secret_value"] == "new-token"
+
+    with api_context.database.session_factory() as session:
+        old_secret = session.get(Secret, old_secret_id)
+        replacement = session.get(Secret, UUID(rotation_body["secret"]["id"]))
+
+    assert old_secret is not None
+    assert old_secret.status == "revoked"
+    assert replacement is not None
+    assert replacement.status == "active"
 
 
 def test_adapter_error_is_returned_safely_and_records_error_usage(
@@ -716,6 +860,108 @@ def add_bound_capability_without_invoke_permission(
         session.commit()
 
 
+def add_second_bound_capability(api_context: APIContext, records: RuntimeRecords) -> None:
+    with api_context.database.session_factory() as session:
+        workspace = session.get(Workspace, records.workspace_id)
+        application = session.get(ApplicationInstance, records.application_id)
+        agent = session.get(Agent, records.agent_id)
+        user = session.get(User, records.user_id)
+        role = session.get(Role, records.role_id)
+        assert workspace is not None
+        assert application is not None
+        assert agent is not None
+        assert user is not None
+        assert role is not None
+        capability = Capability(
+            id="mock.phonebook.search.extra",
+            workspace=workspace,
+            application_instance=application,
+            name="Search extra phonebook",
+            provider_type="mock",
+            adapter="recording",
+            operation="phonebook.search.extra",
+            auth_mode="user",
+            risk_class="read_only",
+            input_schema=phonebook_input_schema(),
+            output_schema=phonebook_output_schema(),
+        )
+        binding = Binding(
+            workspace=workspace,
+            agent=agent,
+            user=user,
+            capability=capability,
+            role=role,
+        )
+        session.add_all([capability, binding])
+        session.commit()
+
+
+def add_admin_risk_capability(api_context: APIContext, records: RuntimeRecords) -> None:
+    with api_context.database.session_factory() as session:
+        workspace = session.get(Workspace, records.workspace_id)
+        application = session.get(ApplicationInstance, records.application_id)
+        agent = session.get(Agent, records.agent_id)
+        user = session.get(User, records.user_id)
+        role = session.get(Role, records.role_id)
+        assert workspace is not None
+        assert application is not None
+        assert agent is not None
+        assert user is not None
+        assert role is not None
+        capability = Capability(
+            id="mock.admin.maintenance",
+            workspace=workspace,
+            application_instance=application,
+            name="Admin maintenance",
+            provider_type="mock",
+            adapter="recording",
+            operation="admin.maintenance",
+            auth_mode="user",
+            risk_class="admin",
+            input_schema=phonebook_input_schema(),
+            output_schema=phonebook_output_schema(),
+        )
+        binding = Binding(
+            workspace=workspace,
+            agent=agent,
+            user=user,
+            capability=capability,
+            role=role,
+        )
+        session.add_all([capability, binding])
+        session.commit()
+
+
+def add_other_agent_usage_event(api_context: APIContext, records: RuntimeRecords) -> None:
+    with api_context.database.session_factory() as session:
+        workspace = session.get(Workspace, records.workspace_id)
+        application = session.get(ApplicationInstance, records.application_id)
+        assert workspace is not None
+        assert application is not None
+        other_agent = Agent(
+            workspace=workspace,
+            slug="other-runtime-agent",
+            display_name="Other Runtime Agent",
+            token_hash=hash_token("grt_other_runtime", api_context.settings.agent_token_pepper),
+            token_hash_algorithm=TOKEN_HASH_ALGORITHM,
+        )
+        session.add(other_agent)
+        session.flush()
+        session.add(
+            UsageEvent(
+                workspace=workspace,
+                agent=other_agent,
+                user_id=records.user_id,
+                capability_id=records.capability_id,
+                application_instance=application,
+                status="success",
+                units=99,
+                latency_ms=1,
+            )
+        )
+        session.commit()
+
+
 def add_user(
     api_context: APIContext, workspace_id: UUID, external_id: str, display_name: str
 ) -> UUID:
@@ -736,22 +982,22 @@ def add_secret(
     owner_id: UUID,
     value: str,
     status: str = "active",
-) -> None:
+) -> UUID:
     with api_context.database.session_factory() as session:
         workspace = session.get(Workspace, records.workspace_id)
         application = session.get(ApplicationInstance, records.application_id)
         assert workspace is not None
         assert application is not None
         cipher = SecretCipher(api_context.settings.secret_encryption_key)
-        session.add(
-            Secret(
-                workspace=workspace,
-                application_instance=application,
-                owner_type=owner_type,
-                owner_id=owner_id,
-                secret_type="bearer_token",
-                encrypted_value=cipher.encrypt(value),
-                status=status,
-            )
+        secret = Secret(
+            workspace=workspace,
+            application_instance=application,
+            owner_type=owner_type,
+            owner_id=owner_id,
+            secret_type="bearer_token",
+            encrypted_value=cipher.encrypt(value),
+            status=status,
         )
+        session.add(secret)
         session.commit()
+        return secret.id

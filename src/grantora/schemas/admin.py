@@ -37,6 +37,8 @@ class AdminWorkspaceResponse(BaseModel):
 
 class AdminWorkspaceListResponse(BaseModel):
     workspaces: list[WorkspaceAdminSummary]
+    limit: int
+    offset: int
 
 
 class ApplicationAdminSummary(BaseModel):
@@ -66,6 +68,8 @@ class AdminApplicationResponse(BaseModel):
 
 class AdminApplicationListResponse(BaseModel):
     applications: list[ApplicationAdminSummary]
+    limit: int
+    offset: int
 
 
 class UserAdminSummary(BaseModel):
@@ -91,6 +95,8 @@ class AdminUserResponse(BaseModel):
 
 class AdminUserListResponse(BaseModel):
     users: list[UserAdminSummary]
+    limit: int
+    offset: int
 
 
 class CapabilityAdminSummary(BaseModel):
@@ -133,6 +139,8 @@ class AdminCapabilityResponse(BaseModel):
 
 class AdminCapabilityListResponse(BaseModel):
     capabilities: list[CapabilityAdminSummary]
+    limit: int
+    offset: int
 
 
 class PermissionAdminSummary(BaseModel):
@@ -153,6 +161,8 @@ class AdminPermissionResponse(BaseModel):
 
 class AdminPermissionListResponse(BaseModel):
     permissions: list[PermissionAdminSummary]
+    limit: int
+    offset: int
 
 
 class RoleAdminSummary(BaseModel):
@@ -178,6 +188,8 @@ class AdminRoleResponse(BaseModel):
 
 class AdminRoleListResponse(BaseModel):
     roles: list[RoleAdminSummary]
+    limit: int
+    offset: int
 
 
 class BindingAdminSummary(BaseModel):
@@ -207,6 +219,8 @@ class AdminBindingResponse(BaseModel):
 
 class AdminBindingListResponse(BaseModel):
     bindings: list[BindingAdminSummary]
+    limit: int
+    offset: int
 
 
 class SecretAdminSummary(BaseModel):
@@ -230,12 +244,32 @@ class AdminSecretCreateRequest(BaseModel):
     value: str = Field(min_length=1)
 
 
+class AdminLifecycleStatusUpdateRequest(BaseModel):
+    status: LifecycleStatus
+
+
+class AdminSecretStatusUpdateRequest(BaseModel):
+    status: SecretStatus
+
+
+class AdminSecretRotateRequest(BaseModel):
+    value: str = Field(min_length=1)
+    secret_type: SecretType | None = None
+
+
 class AdminSecretResponse(BaseModel):
     secret: SecretAdminSummary
 
 
+class AdminSecretRotationResponse(BaseModel):
+    secret: SecretAdminSummary
+    revoked_secret: SecretAdminSummary
+
+
 class AdminSecretListResponse(BaseModel):
     secrets: list[SecretAdminSummary]
+    limit: int
+    offset: int
 
 
 class AuditEventAdminSummary(BaseModel):
