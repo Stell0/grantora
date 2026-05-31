@@ -56,11 +56,11 @@ This roadmap is the working build order for Grantora. Keep checkboxes current an
 
 ## Milestone 5 - First Adapter
 
-- [ ] Add mock adapter. Test: invocation engine can call it without network access.
-- [ ] Add NethVoice phonebook adapter. Test: mock upstream response normalizes to the contact output schema.
-- [ ] Enforce result limit and safe field selection. Test: oversized upstream result is trimmed and sensitive fields are excluded.
-- [ ] Normalize upstream errors. Test: 401, 404, timeout and 5xx map to safe Grantora error codes.
-- [ ] output git commands to add files and commit changes using a conventional commit 
+- [x] Add mock adapter. Test: invocation engine can call it without network access.
+- [x] Add NethVoice phonebook adapter. Test: mock upstream response normalizes to the contact output schema.
+- [x] Enforce result limit and safe field selection. Test: oversized upstream result is trimmed and sensitive fields are excluded.
+- [x] Normalize upstream errors. Test: 401, 404, timeout and 5xx map to safe Grantora error codes.
+- [x] output git commands to add files and commit changes using a conventional commit 
 
 ## Milestone 6 - MCP/OpenAPI Tool Description
 

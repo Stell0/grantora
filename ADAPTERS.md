@@ -155,6 +155,7 @@ Output:
 Rules:
 
 - Read-only only.
+- Call the configured application `base_url` at `GET /api/phonebook/search` with `query` and the enforced `limit`.
 - Enforce maximum result limit from the capability input schema.
 - Return only `display_name`, `phone`, `company` and `source` unless the contract is updated.
 - Do not log contact payloads by default.

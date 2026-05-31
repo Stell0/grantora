@@ -16,3 +16,10 @@ class AdapterRegistry:
 
     def get(self, adapter_id: str) -> Adapter | None:
         return self._adapters.get(adapter_id)
+
+
+def create_default_adapter_registry() -> AdapterRegistry:
+    from grantora.adapters.mock import MockAdapter
+    from grantora.adapters.nethvoice import NethVoicePhonebookAdapter
+
+    return AdapterRegistry([MockAdapter(), NethVoicePhonebookAdapter()])

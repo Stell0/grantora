@@ -10,7 +10,9 @@ from grantora.adapters.base import (
     UserContext,
     WorkspaceContext,
 )
-from grantora.adapters.registry import AdapterRegistry
+from grantora.adapters.mock import MockAdapter
+from grantora.adapters.nethvoice import NethVoicePhonebookAdapter
+from grantora.adapters.registry import AdapterRegistry, create_default_adapter_registry
 
 __all__ = [
     "Adapter",
@@ -19,9 +21,12 @@ __all__ = [
     "AgentContext",
     "ApplicationContext",
     "CapabilityContext",
+    "MockAdapter",
     "HealthResult",
     "InvocationContext",
     "SecretMaterial",
+    "NethVoicePhonebookAdapter",
     "UserContext",
     "WorkspaceContext",
+    "create_default_adapter_registry",
 ]

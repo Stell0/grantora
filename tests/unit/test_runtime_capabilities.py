@@ -185,6 +185,31 @@ def test_capability_invocation_validates_authorization_and_reaches_adapter(
     assert usage_event.units == 2
 
 
+def test_builtin_mock_adapter_invocation_uses_default_registry(api_context: APIContext) -> None:
+    records = add_runtime_records(api_context, adapter_id="mock")
+    add_secret(
+        api_context, records, owner_type="user", owner_id=records.user_id, value="user-token"
+    )
+
+    response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.search",
+        headers={
+            **authorization_headers("grt_agent_runtime"),
+            "X-Request-Id": "req_builtin_mock",
+        },
+        json={"user": "alice", "input": {"query": "Mario", "limit": 5}},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "request_id": "req_builtin_mock",
+        "capability": "mock.phonebook.search",
+        "status": "ok",
+        "data": {"contacts": []},
+    }
+    assert api_context.adapter.calls == []
+
+
 def test_capability_invocation_is_denied_without_binding_and_records_events(
     api_context: APIContext,
 ) -> None:
@@ -404,6 +429,7 @@ def add_runtime_records(
     api_context: APIContext,
     *,
     capability_status: str = "active",
+    adapter_id: str = "recording",
 ) -> RuntimeRecords:
     with api_context.database.session_factory() as session:
         workspace = Workspace(slug="acme", display_name="Acme SRL")
@@ -428,7 +454,7 @@ def add_runtime_records(
             application_instance=application,
             name="Search phonebook",
             provider_type="mock",
-            adapter="recording",
+            adapter=adapter_id,
             operation="phonebook.search",
             auth_mode="user",
             risk_class="read_only",

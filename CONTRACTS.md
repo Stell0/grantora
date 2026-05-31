@@ -279,6 +279,7 @@ input_schema:
       maximum: 50
   required:
     - query
+  additionalProperties: false
 output_schema:
   type: object
   properties:
@@ -295,6 +296,16 @@ output_schema:
             type: string
           source:
             type: string
+            const: nethvoice
+        required:
+          - display_name
+          - phone
+          - company
+          - source
+        additionalProperties: false
+  required:
+    - contacts
+  additionalProperties: false
 ```
 
 Valid `auth_mode` values: `system`, `user`, `user+scope`, `admin`.
