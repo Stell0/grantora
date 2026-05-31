@@ -326,6 +326,7 @@ class AuditEvent(Base):
         DateTime(timezone=True), default=utc_now, nullable=False
     )
     request_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(32), default="agent", nullable=False)
     workspace_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("workspaces.id"),

@@ -13,6 +13,18 @@ class CapabilitySchemaValidationError(ValueError):
         super().__init__(message)
 
 
+def check_json_schema(
+    schema: Mapping[str, Any],
+    *,
+    schema_error_code: str = "capability_schema_invalid",
+    schema_error_message: str = "Capability schema is invalid",
+) -> None:
+    try:
+        Draft202012Validator.check_schema(schema)
+    except SchemaError as exc:
+        raise CapabilitySchemaValidationError(schema_error_code, schema_error_message) from exc
+
+
 def validate_json_schema(
     instance: Any,
     schema: Mapping[str, Any],
@@ -22,10 +34,11 @@ def validate_json_schema(
     schema_error_code: str = "capability_schema_invalid",
     schema_error_message: str = "Capability schema is invalid",
 ) -> None:
-    try:
-        Draft202012Validator.check_schema(schema)
-    except SchemaError as exc:
-        raise CapabilitySchemaValidationError(schema_error_code, schema_error_message) from exc
+    check_json_schema(
+        schema,
+        schema_error_code=schema_error_code,
+        schema_error_message=schema_error_message,
+    )
 
     validator = Draft202012Validator(schema)
     if next(validator.iter_errors(instance), None) is not None:

@@ -11,6 +11,7 @@ def record_audit_event(
     session: Session,
     *,
     request_id: str,
+    actor_type: str = "agent",
     workspace_id: UUID,
     agent_id: UUID | None,
     user_id: UUID | None,
@@ -25,6 +26,7 @@ def record_audit_event(
     session.add(
         AuditEvent(
             request_id=request_id,
+            actor_type=actor_type,
             workspace_id=workspace_id,
             agent_id=agent_id,
             user_id=user_id,

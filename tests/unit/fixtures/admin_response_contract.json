@@ -1,0 +1,121 @@
+{
+  "queries": {
+    "audit": [
+      "actor_type",
+      "agent_id",
+      "application_instance_id",
+      "capability_id",
+      "decision",
+      "error_code",
+      "id",
+      "latency_ms",
+      "outcome",
+      "remote_addr",
+      "request_id",
+      "timestamp",
+      "user_id",
+      "workspace_id"
+    ],
+    "usage": [
+      "agent_id",
+      "application_instance_id",
+      "capability_id",
+      "id",
+      "latency_ms",
+      "status",
+      "timestamp",
+      "units",
+      "user_id",
+      "workspace_id"
+    ],
+    "usage_summary": [
+      "agent_id",
+      "capability_id",
+      "events",
+      "status",
+      "total_units",
+      "user_id",
+      "workspace_id"
+    ]
+  },
+  "resources": {
+    "agent": [
+      "display_name",
+      "id",
+      "slug",
+      "status",
+      "workspace_id"
+    ],
+    "application": [
+      "base_url",
+      "display_name",
+      "id",
+      "provider_type",
+      "slug",
+      "status",
+      "workspace_id"
+    ],
+    "binding": [
+      "agent_id",
+      "capability_id",
+      "id",
+      "role_id",
+      "status",
+      "user_id",
+      "workspace_id"
+    ],
+    "capability": [
+      "adapter",
+      "application_instance_id",
+      "auth_mode",
+      "id",
+      "input_schema",
+      "name",
+      "operation",
+      "output_schema",
+      "provider_type",
+      "risk_class",
+      "status",
+      "version",
+      "workspace_id"
+    ],
+    "permission": [
+      "code",
+      "description"
+    ],
+    "role": [
+      "display_name",
+      "id",
+      "permission_codes",
+      "slug",
+      "status",
+      "workspace_id"
+    ],
+    "role_permission_codes": [
+      "capability.describe",
+      "capability.invoke.read_only"
+    ],
+    "secret": [
+      "application_instance_id",
+      "id",
+      "owner_id",
+      "owner_type",
+      "secret_type",
+      "status",
+      "workspace_id"
+    ],
+    "user": [
+      "display_name",
+      "external_id",
+      "id",
+      "status",
+      "workspace_id"
+    ],
+    "workspace": [
+      "display_name",
+      "id",
+      "slug",
+      "status"
+    ]
+  }
+}

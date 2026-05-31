@@ -153,19 +153,309 @@ Required endpoints:
 - `GET /v1/admin/workspaces`
 - `POST /v1/admin/applications`
 - `GET /v1/admin/applications`
+- `POST /v1/admin/users`
+- `GET /v1/admin/users`
 - `POST /v1/admin/capabilities`
 - `GET /v1/admin/capabilities`
+- `POST /v1/admin/roles`
+- `GET /v1/admin/roles`
+- `POST /v1/admin/permissions`
+- `GET /v1/admin/permissions`
 - `POST /v1/admin/agents`
 - `GET /v1/admin/agents`
 - `POST /v1/admin/bindings`
 - `GET /v1/admin/bindings`
 - `POST /v1/admin/secrets`
+- `GET /v1/admin/secrets`
 - `GET /v1/admin/audit`
 - `GET /v1/admin/usage`
 - `POST /v1/admin/apisix/sync`
 - `GET /v1/admin/apisix/status`
 
 Admin `POST` endpoints must validate workspace ownership and write audit records for security-relevant changes.
+
+Admin list endpoints that expose stateful resources use `include_disabled=false` by default. When supported, `include_disabled=true` also returns disabled or revoked rows for operator inspection.
+
+### POST /v1/admin/workspaces
+
+Creates a workspace.
+
+Request body:
+
+```json
+{
+  "slug": "acme",
+  "display_name": "Acme SRL",
+  "status": "active"
+}
+```
+
+Success response:
+
+```json
+{
+  "workspace": {
+    "id": "uuid",
+    "slug": "acme",
+    "display_name": "Acme SRL",
+    "status": "active"
+  }
+}
+```
+
+Rules:
+
+- Workspace slugs are globally unique.
+- Valid statuses are `active` and `disabled`.
+- Disabled workspaces are hidden from default admin lists and are not valid parents for new dynamic objects.
+
+### GET /v1/admin/workspaces
+
+Returns workspace metadata.
+
+Optional query parameters:
+
+- `include_disabled`: include disabled workspaces when true.
+
+### POST /v1/admin/applications
+
+Creates an application instance in an active workspace.
+
+Request body:
+
+```json
+{
+  "workspace_id": "uuid",
+  "slug": "nethvoice",
+  "display_name": "NethVoice",
+  "provider_type": "nethvoice",
+  "base_url": "https://nethvoice.example.test",
+  "status": "active"
+}
+```
+
+Success response wraps an `application` object with `id`, `workspace_id`, `slug`, `display_name`, `provider_type`, `base_url` and `status`.
+
+Rules:
+
+- Application slugs are unique per workspace.
+- Creating an application in a missing or disabled workspace fails safely.
+- Admin application responses may include the configured `base_url`, but must never include secrets or provider credentials.
+
+### GET /v1/admin/applications
+
+Returns application instance metadata.
+
+Optional query parameters:
+
+- `workspace_id`: filter to one workspace.
+- `include_disabled`: include disabled application instances when true.
+
+### POST /v1/admin/users
+
+Creates a user identity in an active workspace.
+
+Request body:
+
+```json
+{
+  "workspace_id": "uuid",
+  "external_id": "alice",
+  "display_name": "Alice",
+  "status": "active"
+}
+```
+
+Success response wraps a `user` object with `id`, `workspace_id`, `external_id`, `display_name` and `status`.
+
+Rules:
+
+- User external ids are unique per workspace.
+- Disabled users are hidden from default admin lists and from runtime user lookup.
+
+### GET /v1/admin/users
+
+Returns user metadata.
+
+Optional query parameters:
+
+- `workspace_id`: filter to one workspace.
+- `include_disabled`: include disabled users when true.
+
+### POST /v1/admin/capabilities
+
+Creates a capability bound to an application instance in an active workspace.
+
+Request body follows the [Capability Contract](#capability-contract).
+
+Success response wraps a `capability` object with all capability contract metadata except private adapter configuration.
+
+Rules:
+
+- Capability ids are globally unique stable identifiers.
+- The referenced application instance must belong to the same active workspace.
+- `input_schema` and `output_schema` must be valid JSON Schemas.
+- Valid `auth_mode` and `risk_class` values are the values documented in the capability contract.
+
+### GET /v1/admin/capabilities
+
+Returns capability metadata.
+
+Optional query parameters:
+
+- `workspace_id`: filter to one workspace.
+- `application_instance_id`: filter to one application instance.
+- `include_disabled`: include disabled capabilities when true.
+
+### POST /v1/admin/permissions
+
+Creates or registers a global permission code. Grantora also seeds the built-in capability permissions deterministically when roles are created or permissions are listed.
+
+Request body:
+
+```json
+{
+  "code": "capability.invoke.read_only",
+  "description": "Invoke read-only capabilities"
+}
+```
+
+Rules:
+
+- Permission codes are globally unique.
+- Built-in permission codes are `capability.describe`, `capability.invoke.read_only`, `capability.invoke.side_effect` and `capability.invoke.destructive`.
+
+### GET /v1/admin/permissions
+
+Returns registered permission codes.
+
+### POST /v1/admin/roles
+
+Creates a role in an active workspace and attaches existing permission codes.
+
+Request body:
+
+```json
+{
+  "workspace_id": "uuid",
+  "slug": "phonebook-reader",
+  "display_name": "Phonebook reader",
+  "permission_codes": [
+    "capability.describe",
+    "capability.invoke.read_only"
+  ],
+  "status": "active"
+}
+```
+
+Success response wraps a `role` object with `id`, `workspace_id`, `slug`, `display_name`, `permission_codes` and `status`.
+
+Rules:
+
+- Role slugs are unique per workspace.
+- Unknown permission codes are rejected.
+- Runtime discovery requires `capability.describe` plus the risk-specific invoke permission.
+
+### GET /v1/admin/roles
+
+Returns role metadata and attached permission codes.
+
+Optional query parameters:
+
+- `workspace_id`: filter to one workspace.
+- `include_disabled`: include disabled roles when true.
+
+### POST /v1/admin/bindings
+
+Creates an authorization binding between a workspace, agent, user, capability and role.
+
+Request body follows the [Binding Contract](#binding-contract), without `id`.
+
+Rules:
+
+- The workspace, agent, user, capability and role must all be active.
+- The agent, user, capability and role must all belong to the binding workspace.
+- Cross-workspace bindings are rejected.
+
+### GET /v1/admin/bindings
+
+Returns binding metadata.
+
+Optional query parameters:
+
+- `workspace_id`, `agent_id`, `user_id`, `capability_id`, `role_id`: filter bindings.
+- `include_disabled`: include disabled bindings when true.
+
+### POST /v1/admin/secrets
+
+Stores an upstream secret encrypted at rest.
+
+Request body:
+
+```json
+{
+  "workspace_id": "uuid",
+  "application_instance_id": "uuid",
+  "owner_type": "user",
+  "owner_id": "uuid",
+  "secret_type": "bearer_token",
+  "value": "plaintext-secret"
+}
+```
+
+Success response wraps a metadata-only `secret` object with `id`, `workspace_id`, `application_instance_id`, `owner_type`, `owner_id`, `secret_type` and `status`.
+
+Rules:
+
+- `value` is encrypted before persistence and is never returned.
+- `encrypted_value` is never returned.
+- The application instance must belong to the same active workspace.
+- `owner_type=workspace` requires `owner_id` to match the workspace id.
+- `owner_type=user` and `owner_type=agent` require an active owner in the same workspace.
+
+### GET /v1/admin/secrets
+
+Returns metadata-only secret records.
+
+Optional query parameters:
+
+- `workspace_id`, `application_instance_id`, `owner_type`, `owner_id`: filter secrets.
+- `include_revoked`: include revoked secrets when true.
+
+### GET /v1/admin/audit
+
+Returns safe audit events.
+
+Optional query parameters:
+
+- `workspace_id`, `actor_type`, `agent_id`, `user_id`, `capability_id`, `decision`, `outcome`: filter audit events.
+- `start_time`, `end_time`: inclusive timestamp range filters.
+- `limit`, `offset`: bounded pagination.
+
+Rules:
+
+- Results are ordered by newest event first, with stable id ordering for ties.
+- Responses never include bearer tokens, secret values, encrypted values, raw request bodies or upstream response bodies.
+
+### GET /v1/admin/usage
+
+Returns usage events and aggregate summaries.
+
+Optional query parameters:
+
+- `workspace_id`, `agent_id`, `user_id`, `capability_id`, `status`: filter usage events.
+- `start_time`, `end_time`: inclusive timestamp range filters.
+- `limit`, `offset`: bounded pagination.
+
+Success response includes:
+
+- `usage`: matching usage events ordered newest first.
+- `summaries`: aggregates grouped by workspace, agent, user, capability and status with event counts and total units.
+
+Rules:
+
+- Denied, success and error events are all included.
+- Agents and users cannot read this admin endpoint; runtime agent usage has a separate `/v1/usage/me` contract.
 
 ### POST /v1/admin/agents
 
@@ -410,6 +700,7 @@ Rules:
 id: uuid
 timestamp: datetime
 request_id: string
+actor_type: agent | admin_bootstrap
 workspace_id: uuid
 agent_id: uuid | null
 user_id: uuid | null
@@ -423,6 +714,7 @@ remote_addr: string | null
 ```
 
 Denied requests must be audited even when no adapter is invoked.
+Admin bootstrap mutations use `actor_type: admin_bootstrap`; runtime agent activity uses `actor_type: agent`.
 
 ## Usage Event Contract
 
