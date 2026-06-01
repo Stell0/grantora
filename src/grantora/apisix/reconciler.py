@@ -15,6 +15,9 @@ from grantora.metrics import now, record_apisix_sync
 APISIX_SYNC_STATUS_ID = "default"
 DEFAULT_RUNTIME_ROUTE_ID = "gateway-runtime"
 DEFAULT_RUNTIME_ROUTE_URI = "/v1/runtime/*"
+MANAGED_ROUTE_LABEL_KEY = "grantora_managed"
+MANAGED_ROUTE_LABEL_VALUE = "true"
+ROUTE_ID_LABEL_KEY = "grantora_route_id"
 DEFAULT_RUNTIME_ROUTE_URIS = (
     "/v1/me",
     "/v1/capabilities",
@@ -30,7 +33,11 @@ DEFAULT_RUNTIME_ROUTE_URIS = (
 class ApisixRouteClient(Protocol):
     async def get_route(self, route_id: str) -> dict[str, Any] | None: ...
 
+    async def list_routes(self) -> dict[str, dict[str, Any]]: ...
+
     async def put_route(self, route_id: str, route: dict[str, Any]) -> dict[str, Any]: ...
+
+    async def delete_route(self, route_id: str) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -65,9 +72,13 @@ async def reconcile_apisix_routes(
     routes = list(session.scalars(select(ApisixRoute).order_by(ApisixRoute.id)).all())
     changed_routes = 0
     try:
-        current_routes = (
-            await _load_current_routes(routes, client) if settings.apisix_fail_closed else {}
-        )
+        if settings.apisix_fail_closed:
+            current_routes = await _load_current_routes(routes, client)
+            managed_routes = await client.list_routes()
+        else:
+            current_routes = {}
+            managed_routes = {}
+
         for route in routes:
             desired_route = build_apisix_route_payload(route, settings)
             current_route = (
@@ -78,6 +89,14 @@ async def reconcile_apisix_routes(
             if current_route is None or not route_matches_desired(current_route, desired_route):
                 await client.put_route(route.id, desired_route)
                 changed_routes += 1
+
+        if not settings.apisix_fail_closed:
+            managed_routes = await client.list_routes()
+        desired_route_ids = {route.id for route in routes}
+        for route_id, current_route in managed_routes.items():
+            if route_id not in desired_route_ids and route_is_grantora_managed(current_route):
+                if await client.delete_route(route_id):
+                    changed_routes += 1
 
         result = ApisixSyncResult(
             status="ok",
@@ -196,6 +215,7 @@ def build_apisix_route_payload(route: ApisixRoute, settings: Settings) -> dict[s
         "name": route.name,
         "upstream": route.upstream,
         "plugins": {**baseline_plugins(settings), **route.plugins},
+        "labels": managed_route_labels(route.id),
         "status": 1 if route.status == ACTIVE_STATUS else 0,
     }
     if route.id == DEFAULT_RUNTIME_ROUTE_ID:
@@ -208,6 +228,21 @@ def build_apisix_route_payload(route: ApisixRoute, settings: Settings) -> dict[s
 def route_matches_desired(current_route: dict[str, Any], desired_route: dict[str, Any]) -> bool:
     comparable_current = {key: current_route.get(key) for key in desired_route}
     return comparable_current == desired_route
+
+
+def managed_route_labels(route_id: str) -> dict[str, str]:
+    return {
+        MANAGED_ROUTE_LABEL_KEY: MANAGED_ROUTE_LABEL_VALUE,
+        ROUTE_ID_LABEL_KEY: route_id,
+    }
+
+
+def route_is_grantora_managed(route: dict[str, Any]) -> bool:
+    labels = route.get("labels")
+    return (
+        isinstance(labels, dict)
+        and labels.get(MANAGED_ROUTE_LABEL_KEY) == MANAGED_ROUTE_LABEL_VALUE
+    )
 
 
 def baseline_plugins(settings: Settings) -> dict[str, Any]:

@@ -27,6 +27,7 @@ class InMemoryApisixClient:
     def __init__(self) -> None:
         self.routes: dict[str, dict[str, Any]] = {}
         self.puts: list[tuple[str, dict[str, Any]]] = []
+        self.deletes: list[str] = []
 
     async def __aenter__(self) -> InMemoryApisixClient:
         return self
@@ -37,10 +38,17 @@ class InMemoryApisixClient:
     async def get_route(self, route_id: str) -> dict[str, Any] | None:
         return self.routes.get(route_id)
 
+    async def list_routes(self) -> dict[str, dict[str, Any]]:
+        return self.routes.copy()
+
     async def put_route(self, route_id: str, route: dict[str, Any]) -> dict[str, Any]:
         self.puts.append((route_id, route))
         self.routes[route_id] = route
         return route
+
+    async def delete_route(self, route_id: str) -> bool:
+        self.deletes.append(route_id)
+        return self.routes.pop(route_id, None) is not None
 
 
 class FailingApisixClient(InMemoryApisixClient):
@@ -126,6 +134,10 @@ def test_admin_apisix_sync_is_idempotent_and_status_is_reported(
         "prometheus": {},
         "request-id": {},
         "limit-count": {"count": 1000, "time_window": 60, "rejected_code": 429},
+    }
+    assert api_context.apisix_client.routes["gateway-runtime"]["labels"] == {
+        "grantora_managed": "true",
+        "grantora_route_id": "gateway-runtime",
     }
 
 

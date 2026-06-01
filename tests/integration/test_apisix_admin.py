@@ -6,7 +6,12 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from grantora.apisix import DEFAULT_RUNTIME_ROUTE_ID, ApisixAdminClient, reconcile_apisix_routes
+from grantora.apisix import (
+    DEFAULT_RUNTIME_ROUTE_ID,
+    DEFAULT_RUNTIME_ROUTE_URIS,
+    ApisixAdminClient,
+    reconcile_apisix_routes,
+)
 from grantora.config import Settings
 from grantora.db import Database
 from grantora.secrets import SecretCipher
@@ -81,7 +86,11 @@ async def test_apisix_reconciliation_is_idempotent_against_admin_api(
     assert second_result.checked_routes == 1
     assert second_result.changed_routes == 0
     assert route is not None
-    assert route["uri"] == "/v1/*"
+    assert route["uris"] == list(DEFAULT_RUNTIME_ROUTE_URIS)
+    assert route["labels"] == {
+        "grantora_managed": "true",
+        "grantora_route_id": DEFAULT_RUNTIME_ROUTE_ID,
+    }
     database.dispose()
 
 

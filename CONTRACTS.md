@@ -946,6 +946,7 @@ Rules:
 - Authenticate a super-admin principal.
 - Seed the default `gateway-runtime` desired route when absent.
 - Compare current APISIX route state before writing. When `APISIX_FAIL_CLOSED=true`, load all current route state before any write so Admin API failures preserve the last known data-plane route state.
+- Mark generated APISIX routes with Grantora ownership labels and delete only stale APISIX routes carrying those labels when their PostgreSQL desired route no longer exists.
 - Running sync twice without desired-state changes must not perform a second APISIX update.
 - Responses must not include the APISIX Admin URL, API key, upstream response body or stack trace.
 
@@ -1356,6 +1357,9 @@ plugins:
     time_window: 60
     rejected_code: 429
 apisix_payload:
+  labels:
+    grantora_managed: "true"
+    grantora_route_id: gateway-runtime
   uris:
     - /v1/me
     - /v1/capabilities
@@ -1371,6 +1375,7 @@ Rules:
 
 - PostgreSQL desired state wins.
 - Reconciliation must be idempotent.
+- Reconciliation deletes stale generated APISIX routes only when the current APISIX route carries `grantora_managed=true`; foreign routes and unlabeled manual routes are never deleted by Grantora.
 - Unsafe sync failures must leave existing safe routes in place.
 - Public APISIX routes expose runtime endpoints only; `/v1/admin/*` is not part of the public data-plane route set.
 - Manual APISIX changes may be overwritten.

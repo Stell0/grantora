@@ -68,6 +68,17 @@ def test_observability_environment_reference_is_wired_to_settings(monkeypatch) -
     assert settings.otel_exporter_otlp_timeout_seconds == 12
 
 
+def test_operations_runbook_documents_common_failures() -> None:
+    operations_doc = (ROOT / "OPERATIONS.md").read_text(encoding="utf-8")
+
+    assert "## Troubleshooting Runbook" in operations_doc
+    assert "Invalid admin hash" in operations_doc
+    assert "Bad Fernet key" in operations_doc
+    assert "Missing secret" in operations_doc
+    assert "APISIX Admin API unavailable" in operations_doc
+    assert "Upstream timeout" in operations_doc
+
+
 def test_security_environment_reference_is_wired_to_settings(monkeypatch) -> None:
     monkeypatch.setenv("MAX_REQUEST_BODY_BYTES", "2048")
     monkeypatch.setenv("FEATURE_OIDC", "true")

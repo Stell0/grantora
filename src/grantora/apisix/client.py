@@ -44,9 +44,17 @@ class ApisixAdminClient:
             return None
         return self._route_from_response(response)
 
+    async def list_routes(self) -> dict[str, dict[str, Any]]:
+        response = await self._request("GET", "/apisix/admin/routes")
+        return self._routes_from_response(response)
+
     async def put_route(self, route_id: str, route: dict[str, Any]) -> dict[str, Any]:
         response = await self._request("PUT", self._route_path(route_id), json=route)
         return self._route_from_response(response)
+
+    async def delete_route(self, route_id: str) -> bool:
+        response = await self._request("DELETE", self._route_path(route_id))
+        return response.status_code != httpx.codes.NOT_FOUND
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         try:
@@ -79,6 +87,31 @@ class ApisixAdminClient:
         return response
 
     def _route_from_response(self, response: httpx.Response) -> dict[str, Any]:
+        payload = self._json_object(response, "route response")
+
+        value = payload.get("value")
+        if isinstance(value, dict):
+            return value
+        return payload
+
+    def _routes_from_response(self, response: httpx.Response) -> dict[str, dict[str, Any]]:
+        payload = self._json_object(response, "route list response")
+        route_items = payload.get("list")
+        if not isinstance(route_items, list):
+            raise ApisixAdminAPIError(
+                "apisix_admin_invalid_response",
+                "APISIX Admin API returned an invalid route list response",
+                response.status_code,
+            )
+
+        routes: dict[str, dict[str, Any]] = {}
+        for item in route_items:
+            route_id, route = self._route_from_list_item(item)
+            if route_id is not None and route is not None:
+                routes[route_id] = route
+        return routes
+
+    def _json_object(self, response: httpx.Response, response_name: str) -> dict[str, Any]:
         try:
             payload = response.json()
         except ValueError as exc:
@@ -91,14 +124,28 @@ class ApisixAdminClient:
         if not isinstance(payload, dict):
             raise ApisixAdminAPIError(
                 "apisix_admin_invalid_response",
-                "APISIX Admin API returned an invalid route response",
+                f"APISIX Admin API returned an invalid {response_name}",
                 response.status_code,
             )
-
-        value = payload.get("value")
-        if isinstance(value, dict):
-            return value
         return payload
+
+    @staticmethod
+    def _route_from_list_item(item: object) -> tuple[str | None, dict[str, Any] | None]:
+        if not isinstance(item, dict):
+            return None, None
+
+        value = item.get("value")
+        route = value if isinstance(value, dict) else item
+        route_id = route.get("id")
+        if not isinstance(route_id, str):
+            route_id = ApisixAdminClient._route_id_from_key(item.get("key"))
+        return route_id, route
+
+    @staticmethod
+    def _route_id_from_key(key: object) -> str | None:
+        if not isinstance(key, str) or not key:
+            return None
+        return key.rstrip("/").rsplit("/", 1)[-1] or None
 
     @staticmethod
     def _route_path(route_id: str) -> str:

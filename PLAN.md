@@ -220,13 +220,13 @@ Goal: keep APISIX as generated runtime state.
 
 Tasks:
 
-- [ ] Verify desired APISIX routes are generated from Grantora configuration.
-- [ ] Verify reconciliation is idempotent.
-- [ ] Verify stale Grantora-managed routes are cleaned up safely.
-- [ ] Verify foreign APISIX routes are not touched.
-- [ ] Verify Admin API key and internal APISIX details never leak in errors or logs.
-- [ ] Verify sync status and drift reports are safe for operators.
-- [ ] Verify admin routes are not exposed through public APISIX routes unless explicitly intended.
+- [x] Verify desired APISIX routes are generated from Grantora configuration. Test: `tests/unit/test_apisix_reconciler.py`, `tests/unit/test_admin_apisix_api.py`.
+- [x] Verify reconciliation is idempotent. Test: `tests/unit/test_apisix_reconciler.py`, `tests/integration/test_apisix_admin.py`.
+- [x] Verify stale Grantora-managed routes are cleaned up safely. Test: `tests/unit/test_apisix_reconciler.py`.
+- [x] Verify foreign APISIX routes are not touched. Test: `tests/unit/test_apisix_reconciler.py`.
+- [x] Verify Admin API key and internal APISIX details never leak in errors or logs. Test: `tests/unit/test_admin_apisix_api.py`, `tests/unit/test_app.py`.
+- [x] Verify sync status and drift reports are safe for operators. Test: `tests/unit/test_admin_apisix_api.py`.
+- [x] Verify admin routes are not exposed through public APISIX routes unless explicitly intended. Test: `tests/unit/test_apisix_reconciler.py`, `tests/e2e/test_runtime_through_apisix.py`.
 
 
 Tests:
@@ -241,12 +241,12 @@ Goal: make operators able to understand and maintain Grantora during development
 
 Tasks:
 
-- [ ] Verify structured logs contain request id and safe entity ids only.
-- [ ] Verify logs omit authorization headers, tokens, cookies, secret values, encrypted values and payload bodies.
-- [ ] Verify metrics counters increment for auth failures, denials, successes, adapter errors, secret resolution and APISIX sync.
-- [ ] Verify audit and usage retention support dry-run and destructive modes.
-- [ ] Verify backup/restore smoke works with PostgreSQL dump/restore plus APISIX resync.
-- [ ] Update runbooks for common failures: invalid admin hash, bad Fernet key, missing secret, APISIX Admin API unavailable and upstream timeout.
+- [x] Verify structured logs contain request id and safe entity ids only. Test: `tests/unit/test_app.py`, `tests/unit/test_runtime_capabilities.py`.
+- [x] Verify logs omit authorization headers, tokens, cookies, secret values, encrypted values and payload bodies. Test: `tests/unit/test_app.py`, `tests/unit/test_runtime_capabilities.py`.
+- [x] Verify metrics counters increment for auth failures, denials, successes, adapter errors, secret resolution and APISIX sync. Test: `tests/unit/test_app.py`, `tests/unit/test_runtime_capabilities.py`.
+- [x] Verify audit and usage retention support dry-run and destructive modes. Test: `tests/unit/test_retention.py`.
+- [x] Verify backup/restore smoke works with PostgreSQL dump/restore plus APISIX resync. Smoke: `make backup-restore-smoke`; test: `tests/e2e/test_backup_restore_smoke.py`.
+- [x] Update runbooks for common failures: invalid admin hash, bad Fernet key, missing secret, APISIX Admin API unavailable and upstream timeout. Test: `tests/unit/test_deployment_config.py`.
 
 
 Tests:

@@ -16,6 +16,16 @@ async def test_apisix_admin_client_can_create_update_and_read_route() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["x-api-key"] == "admin-secret"
         route_id = request.url.path.rsplit("/", 1)[-1]
+        if request.method == "GET" and request.url.path.endswith("/apisix/admin/routes"):
+            return httpx.Response(
+                200,
+                json={
+                    "list": [
+                        {"key": f"/apisix/routes/{route_id}", "value": route}
+                        for route_id, route in routes.items()
+                    ]
+                },
+            )
         if request.method == "GET":
             route = routes.get(route_id)
             if route is None:
@@ -25,6 +35,11 @@ async def test_apisix_admin_client_can_create_update_and_read_route() -> None:
             route = json.loads(request.content.decode())
             routes[route_id] = route
             return httpx.Response(200, json={"value": route})
+        if request.method == "DELETE":
+            if route_id not in routes:
+                return httpx.Response(404, json={"error_msg": "missing"})
+            del routes[route_id]
+            return httpx.Response(200, json={"deleted": route_id})
         return httpx.Response(405)
 
     transport = httpx.MockTransport(handler)
@@ -46,8 +61,14 @@ async def test_apisix_admin_client_can_create_update_and_read_route() -> None:
             "gateway-runtime",
             {**route, "plugins": {**route["plugins"], "limit-count": {"count": 1000}}},
         )
+        listed = await client.list_routes()
         read_back = await client.get_route("gateway-runtime")
+        deleted = await client.delete_route("gateway-runtime")
+        missing_deleted = await client.delete_route("gateway-runtime")
 
     assert created["uri"] == "/v1/*"
     assert updated["plugins"]["limit-count"] == {"count": 1000}
+    assert listed == {"gateway-runtime": updated}
     assert read_back == updated
+    assert deleted is True
+    assert missing_deleted is False

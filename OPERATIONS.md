@@ -361,6 +361,7 @@ Operational rules:
 
 - PostgreSQL desired state wins.
 - Manual APISIX changes may be overwritten.
+- Grantora labels generated APISIX routes with `grantora_managed=true` and deletes stale generated routes only when that label is present; foreign or unlabeled APISIX routes are left untouched.
 - APISIX Admin API must be internal-only outside local development.
 - Local compose binds the APISIX Admin API to `127.0.0.1:${APISIX_ADMIN_PORT:-9180}`; do not publish it on public interfaces in production examples.
 - Public APISIX routes expose runtime endpoints only; admin endpoints stay on the direct Grantora API and require the admin bootstrap token.
