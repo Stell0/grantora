@@ -13,7 +13,7 @@ cp .env.example .env
 Required groups:
 
 - Core service: environment, bind address, public base URL and logging.
-- Database: PostgreSQL URL, pool size and migration behavior.
+- Database: PostgreSQL URL and pool size.
 - Security: `SECRET_ENCRYPTION_KEY`, `GRANTORA_AGENT_TOKEN_PEPPER` or `AGENT_TOKEN_PEPPER`, and `GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH` or `ADMIN_BOOTSTRAP_TOKEN_HASH`.
 - Security hardening: `MAX_REQUEST_BODY_BYTES`, optional `FEATURE_OIDC` plus OIDC subject settings, and optional `FEATURE_EXTERNAL_SECRET_STORE`.
 - Local workflow helpers: `ADMIN_BOOTSTRAP_TOKEN`, `GRANTORA_API_URL`, `GRANTORA_RUNTIME_URL` and optional `DEMO_*` values used by `make demo-seed` and `make smoke`.
@@ -70,28 +70,21 @@ Local service names:
 - `apisix`: APISIX data-plane and Admin API
 - `apisix-etcd`: APISIX configuration backend
 
-## Database Migrations
+## Development Schema Bootstrap
 
-The local API container entrypoint runs migrations before Uvicorn when `MIGRATIONS_AUTO_RUN=true`:
+Grantora is still in development and has no production installations. The API creates the current database schema from SQLAlchemy metadata during FastAPI startup:
 
 ```bash
 docker compose up --build -d grantora-api
 ```
 
-Disable automatic migrations by setting `MIGRATIONS_AUTO_RUN=false`, then run migrations manually:
-
-```bash
-alembic upgrade head
-alembic revision --autogenerate -m "describe change"
-```
-
 Rules:
 
-- Run migrations before starting production traffic.
-- Invalid `MIGRATIONS_AUTO_RUN` values make the container exit before serving traffic.
-- Do not edit applied migration files in shared environments.
-- Include indexes for new lookup paths.
-- Keep migration behavior independent of NS8 internals.
+- Edit SQLAlchemy models directly while the project is pre-release.
+- Start with a clean disposable PostgreSQL volume or temporary test schema after model changes.
+- Let application startup run `Base.metadata.create_all()` for the current model set.
+- Do not preserve old development databases unless a test fixture explicitly needs it.
+- Add indexes and constraints directly to the models with the behavior change.
 
 ## Demo Bootstrap And Smoke
 
@@ -224,14 +217,12 @@ make release-image-smoke REGISTRY=ghcr.io/grantora
 
 The standalone production example is [deploy/compose.production.yml](deploy/compose.production.yml). It publishes only the APISIX public port, leaves PostgreSQL, APISIX etcd, Grantora API and the APISIX Admin API off host ports, and gives `grantora-api` a separate egress network for adapter calls to approved upstream applications.
 
-Start a production-style deployment with explicit migrations:
+Start a production-style deployment. The API creates the current schema on startup:
 
 ```bash
 cp deploy/production.env.example .env.production
 # Edit .env.production with real generated secrets and the desired image tag.
 docker compose --env-file .env.production -f deploy/compose.production.yml pull
-docker compose --env-file .env.production -f deploy/compose.production.yml up -d postgres apisix-etcd
-docker compose --env-file .env.production -f deploy/compose.production.yml run --rm grantora-api python -m alembic upgrade head
 docker compose --env-file .env.production -f deploy/compose.production.yml up -d
 ```
 
@@ -447,7 +438,6 @@ cp grantora.env.backup .env
 docker compose up -d postgres
 docker compose exec -T postgres pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists < grantora.dump
 docker compose up -d grantora-api apisix-etcd apisix
-docker compose exec grantora-api alembic upgrade head
 curl -X POST http://localhost:8080/v1/admin/apisix/sync \
   -H "Authorization: Bearer $ADMIN_BOOTSTRAP_TOKEN"
 ```
@@ -464,10 +454,9 @@ Restore order:
 
 1. Restore environment secrets.
 2. Restore PostgreSQL.
-3. Run migrations if needed.
-4. Start Grantora API.
-5. Reconcile APISIX routes.
-6. Verify `/readyz`, `/metrics` and a demo capability invocation.
+3. Start Grantora API so it verifies and creates the current schema where needed.
+4. Reconcile APISIX routes.
+5. Verify `/readyz`, `/metrics` and a demo capability invocation.
 
 Acceptance test: restoring into a clean local environment must recreate workspaces, application instances, agents, users, capabilities, bindings, encrypted secrets, audit events, usage events and APISIX desired route state from PostgreSQL. A fresh APISIX reconciliation must recreate generated APISIX runtime routes.
 
@@ -520,13 +509,13 @@ curl -sS 'http://localhost:8080/v1/admin/apisix/status?include_drift=true' \
 
 If sync reports `apisix_admin_unavailable`, verify `APISIX_ADMIN_URL`, `APISIX_ADMIN_KEY`, the local `127.0.0.1:${APISIX_ADMIN_PORT:-9180}` binding and container reachability before retrying `POST /v1/admin/apisix/sync`.
 
-Migration failure:
+Schema bootstrap failure:
 
 ```bash
-docker compose exec grantora-api python -m alembic upgrade head
+docker compose logs grantora-api
 ```
 
-If startup fails before the API is ready, run the migration manually to surface the schema error, then inspect container logs and the latest migration for incompatible changes.
+If startup fails before the API is ready, inspect container logs for schema errors. During development, recreate disposable PostgreSQL state after model changes unless a test fixture explicitly preserves data.
 
 Upstream timeout:
 
@@ -538,7 +527,7 @@ If runtime returns `upstream_timeout`, confirm the upstream base URL, `UPSTREAM_
 
 ## Upgrade Rules
 
-- Apply database migrations before enabling code that depends on them.
+- During development, use clean or compatible PostgreSQL state before enabling code that depends on model changes.
 - Keep old route state safe until APISIX reconciliation succeeds.
 - Preserve backward-compatible error codes unless [CONTRACTS.md](CONTRACTS.md) is updated.
 - Document any required secret rotation or re-encryption step.

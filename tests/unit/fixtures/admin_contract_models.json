@@ -115,6 +115,38 @@
       "workspace"
     ]
   },
+  "runtime_response_models": {
+    "CapabilityInvokeResponse": [
+      "capability",
+      "data",
+      "request_id",
+      "status"
+    ],
+    "CapabilityListResponse": [
+      "capabilities",
+      "limit",
+      "offset"
+    ],
+    "MCPToolCallResponse": [
+      "content",
+      "is_error",
+      "meta",
+      "structured_content"
+    ],
+    "MCPToolListResponse": [
+      "tools"
+    ],
+    "MeResponse": [
+      "agent",
+      "workspace"
+    ],
+    "UsageMeResponse": [
+      "limit",
+      "offset",
+      "summaries",
+      "usage"
+    ]
+  },
   "standard_error_response": {
     "body_keys": [
       "error",

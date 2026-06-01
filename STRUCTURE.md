@@ -21,7 +21,6 @@ grantora/
     workflows/
   docker-compose.yml
   pyproject.toml
-  alembic.ini
   Makefile
   containers/
     grantora-api.Dockerfile
@@ -29,8 +28,6 @@ grantora/
   deploy/
     compose.production.yml
     production.env.example
-  migrations/
-    versions/
   src/
     grantora/
   tests/
@@ -85,8 +82,8 @@ src/grantora/
 ## Database Ownership
 
 - SQLAlchemy models live in `src/grantora/db/models/` or a clearly equivalent package under `src/grantora/db/`.
-- Alembic migration scripts live in `migrations/versions/`.
-- Database schema changes must update [CONTRACTS.md](CONTRACTS.md) before implementation.
+- During development, database schema changes are made directly in SQLAlchemy models and created with `Base.metadata.create_all()` on fresh disposable state.
+- Database schema changes must update [CONTRACTS.md](CONTRACTS.md) before or with implementation.
 - PostgreSQL owns dynamic state; APISIX and adapters must be treated as generated or external runtime state.
 
 ## Adapter Ownership
@@ -111,7 +108,7 @@ APISIX must not become the business authorization engine. Grantora API performs 
 ## Test Layout
 
 - `tests/unit/`: pure logic tests for RBAC, tokens, schema validation, adapters and error mapping.
-- `tests/integration/`: PostgreSQL, migrations, APISIX reconciliation, mock upstream calls and metrics.
+- `tests/integration/`: PostgreSQL schema bootstrap, APISIX reconciliation, mock upstream calls and metrics.
 - `tests/e2e/`: full request flow through APISIX into Grantora API.
 
 ## Release And Deployment Assets

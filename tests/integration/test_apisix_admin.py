@@ -52,11 +52,11 @@ async def test_apisix_admin_api_can_create_update_and_read_route(
 
 @pytest.mark.asyncio
 async def test_apisix_reconciliation_is_idempotent_against_admin_api(
-    migrated_postgres_schema: IsolatedPostgresSchema,
+    current_postgres_schema: IsolatedPostgresSchema,
     apisix_target: ApisixIntegrationTarget,
 ) -> None:
     settings = Settings(
-        database_url=migrated_postgres_schema.database_url,
+        database_url=current_postgres_schema.database_url,
         environment="integration",
         secret_encryption_key=SecretCipher.generate_key(),
         apisix_admin_url=apisix_target.admin_url,

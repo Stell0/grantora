@@ -109,11 +109,14 @@ def get_active_capability_by_id(
     statement = (
         select(Capability)
         .join(Capability.workspace)
+        .join(Capability.application_instance)
         .where(
             Capability.workspace_id == workspace_id,
             Capability.id == capability_id,
             Capability.status == ACTIVE_STATUS,
             Workspace.status == ACTIVE_STATUS,
+            ApplicationInstance.workspace_id == workspace_id,
+            ApplicationInstance.status == ACTIVE_STATUS,
         )
     )
     return session.scalar(statement)
@@ -127,14 +130,28 @@ def list_active_capabilities_for_agent_user(
 ) -> list[Capability]:
     statement = (
         select(Capability)
+        .join(Capability.workspace)
+        .join(Capability.application_instance)
         .join(Binding, Binding.capability_id == Capability.id)
+        .join(Agent, Binding.agent_id == Agent.id)
+        .join(User, Binding.user_id == User.id)
+        .join(Role, Binding.role_id == Role.id)
         .where(
             Capability.workspace_id == workspace_id,
             Capability.status == ACTIVE_STATUS,
+            Workspace.status == ACTIVE_STATUS,
+            ApplicationInstance.workspace_id == workspace_id,
+            ApplicationInstance.status == ACTIVE_STATUS,
             Binding.workspace_id == workspace_id,
             Binding.agent_id == agent_id,
             Binding.user_id == user_id,
             Binding.status == ACTIVE_STATUS,
+            Agent.workspace_id == workspace_id,
+            Agent.status == ACTIVE_STATUS,
+            User.workspace_id == workspace_id,
+            User.status == ACTIVE_STATUS,
+            Role.workspace_id == workspace_id,
+            Role.status == ACTIVE_STATUS,
         )
         .order_by(Capability.id)
     )
@@ -161,12 +178,32 @@ def get_active_binding(
     user_id: UUID,
     capability_id: str,
 ) -> Binding | None:
-    statement = select(Binding).where(
-        Binding.workspace_id == workspace_id,
-        Binding.agent_id == agent_id,
-        Binding.user_id == user_id,
-        Binding.capability_id == capability_id,
-        Binding.status == ACTIVE_STATUS,
+    statement = (
+        select(Binding)
+        .join(Binding.workspace)
+        .join(Binding.agent)
+        .join(Binding.user)
+        .join(Binding.capability)
+        .join(Capability.application_instance)
+        .join(Binding.role)
+        .where(
+            Binding.workspace_id == workspace_id,
+            Binding.agent_id == agent_id,
+            Binding.user_id == user_id,
+            Binding.capability_id == capability_id,
+            Binding.status == ACTIVE_STATUS,
+            Workspace.status == ACTIVE_STATUS,
+            Agent.workspace_id == workspace_id,
+            Agent.status == ACTIVE_STATUS,
+            User.workspace_id == workspace_id,
+            User.status == ACTIVE_STATUS,
+            Capability.workspace_id == workspace_id,
+            Capability.status == ACTIVE_STATUS,
+            ApplicationInstance.workspace_id == workspace_id,
+            ApplicationInstance.status == ACTIVE_STATUS,
+            Role.workspace_id == workspace_id,
+            Role.status == ACTIVE_STATUS,
+        )
     )
     return session.scalar(statement)
 
@@ -181,12 +218,17 @@ def get_active_secret_for_owner(
     statement = (
         select(Secret)
         .options(undefer(Secret.encrypted_value))
+        .join(Secret.workspace)
+        .join(Secret.application_instance)
         .where(
             Secret.workspace_id == workspace_id,
             Secret.application_instance_id == application_instance_id,
             Secret.owner_type == owner_type,
             Secret.owner_id == owner_id,
             Secret.status == ACTIVE_STATUS,
+            Workspace.status == ACTIVE_STATUS,
+            ApplicationInstance.workspace_id == workspace_id,
+            ApplicationInstance.status == ACTIVE_STATUS,
         )
         .order_by(Secret.id)
     )

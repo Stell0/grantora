@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC
 
 import pytest
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker, undefer
 
 from grantora.db.models import (
@@ -63,6 +65,10 @@ class CoreRecords:
     capability: Capability
     role: Role
     binding: Binding
+
+
+def empty_object_schema() -> dict[str, object]:
+    return {"type": "object", "additionalProperties": False}
 
 
 def test_workspace_can_be_created_read_and_filtered_by_active_status(session: Session) -> None:
@@ -159,8 +165,8 @@ def test_active_capability_lookup_uses_id_and_workspace(session: Session) -> Non
         operation="phonebook.disabled",
         auth_mode="user",
         risk_class="read_only",
-        input_schema={"type": "object"},
-        output_schema={"type": "object"},
+        input_schema=empty_object_schema(),
+        output_schema=empty_object_schema(),
         status="disabled",
     )
     session.add(disabled_capability)
@@ -191,8 +197,8 @@ def test_capability_listing_uses_active_binding_for_agent_and_user(session: Sess
         operation="phonebook.unbound",
         auth_mode="user",
         risk_class="read_only",
-        input_schema={"type": "object"},
-        output_schema={"type": "object"},
+        input_schema=empty_object_schema(),
+        output_schema=empty_object_schema(),
     )
     disabled_capability = Capability(
         id="nethvoice.phonebook.disabled",
@@ -204,8 +210,8 @@ def test_capability_listing_uses_active_binding_for_agent_and_user(session: Sess
         operation="phonebook.disabled",
         auth_mode="user",
         risk_class="read_only",
-        input_schema={"type": "object"},
-        output_schema={"type": "object"},
+        input_schema=empty_object_schema(),
+        output_schema=empty_object_schema(),
         status="disabled",
     )
     disabled_binding = Binding(
@@ -437,6 +443,125 @@ def test_apisix_route_definition_and_sync_status_round_trip(session: Session) ->
     assert loaded_status.changed_routes == 1
 
 
+def test_model_constraints_reject_duplicate_and_invalid_records(session: Session) -> None:
+    records = add_core_records(session)
+    cipher = SecretCipher(SecretCipher.generate_key())
+    secret = Secret(
+        workspace=records.workspace,
+        application_instance=records.application,
+        owner_type="user",
+        owner_id=records.user.id,
+        secret_type="bearer_token",
+        encrypted_value=cipher.encrypt("active-token"),
+    )
+    session.add(secret)
+    session.commit()
+
+    expect_integrity_error(
+        session,
+        Workspace(slug=records.workspace.slug, display_name="Duplicate workspace"),
+    )
+    expect_integrity_error(
+        session,
+        ApplicationInstance(
+            workspace=records.workspace,
+            slug=records.application.slug,
+            display_name="Duplicate application",
+            provider_type="nethvoice",
+        ),
+    )
+    expect_integrity_error(
+        session,
+        User(
+            workspace=records.workspace,
+            external_id=records.user.external_id,
+            display_name="Duplicate Alice",
+        ),
+    )
+    expect_integrity_error(
+        session,
+        Role(
+            workspace=records.workspace,
+            slug=records.role.slug,
+            display_name="Duplicate reader",
+        ),
+    )
+    expect_integrity_error(
+        session,
+        Binding(
+            workspace=records.workspace,
+            agent=records.agent,
+            user=records.user,
+            capability=records.capability,
+            role=records.role,
+        ),
+    )
+    expect_integrity_error(
+        session,
+        Secret(
+            workspace=records.workspace,
+            application_instance=records.application,
+            owner_type="user",
+            owner_id=records.user.id,
+            secret_type="api_key",
+            encrypted_value=cipher.encrypt("second-active-token"),
+        ),
+    )
+    expect_integrity_error(
+        session,
+        Workspace(slug="invalid-status", display_name="Invalid", status="archived"),
+    )
+
+
+def test_capability_schema_defaults_and_validation(session: Session) -> None:
+    records = add_core_records(session)
+    defaulted_capability = Capability(
+        id="nethvoice.phonebook.defaulted",
+        workspace=records.workspace,
+        application_instance=records.application,
+        name="Default schema capability",
+        provider_type="nethvoice",
+        adapter="nethvoice",
+        operation="phonebook.defaulted",
+        auth_mode="user",
+        risk_class="read_only",
+    )
+    session.add(defaulted_capability)
+    session.commit()
+
+    assert defaulted_capability.input_schema == empty_object_schema()
+    assert defaulted_capability.output_schema == empty_object_schema()
+
+    with pytest.raises(ValueError):
+        Capability(
+            id="nethvoice.phonebook.invalid_schema",
+            workspace=records.workspace,
+            application_instance=records.application,
+            name="Invalid schema capability",
+            provider_type="nethvoice",
+            adapter="nethvoice",
+            operation="phonebook.invalid_schema",
+            auth_mode="user",
+            risk_class="read_only",
+            input_schema={"type": "object"},
+            output_schema=empty_object_schema(),
+        )
+
+
+def test_model_timestamps_are_utc_aware(session: Session) -> None:
+    records = add_core_records(session)
+    workspace_id = records.workspace.id
+    session.expunge_all()
+
+    loaded_workspace = session.get(Workspace, workspace_id)
+
+    assert loaded_workspace is not None
+    assert loaded_workspace.created_at.tzinfo is not None
+    assert loaded_workspace.updated_at.tzinfo is not None
+    assert loaded_workspace.created_at.utcoffset() == UTC.utcoffset(None)
+    assert loaded_workspace.updated_at.utcoffset() == UTC.utcoffset(None)
+
+
 def add_core_records(session: Session) -> CoreRecords:
     workspace = Workspace(slug="acme", display_name="Acme SRL")
     application = ApplicationInstance(
@@ -468,8 +593,13 @@ def add_core_records(session: Session) -> CoreRecords:
             "type": "object",
             "properties": {"query": {"type": "string"}},
             "required": ["query"],
+            "additionalProperties": False,
         },
-        output_schema={"type": "object", "properties": {"contacts": {"type": "array"}}},
+        output_schema={
+            "type": "object",
+            "properties": {"contacts": {"type": "array"}},
+            "additionalProperties": False,
+        },
     )
     role = Role(workspace=workspace, slug="phonebook-reader", display_name="Phonebook reader")
     permission = Permission(
@@ -507,3 +637,10 @@ def add_core_records(session: Session) -> CoreRecords:
         role=role,
         binding=binding,
     )
+
+
+def expect_integrity_error(session: Session, record: object) -> None:
+    session.add(record)
+    with pytest.raises(IntegrityError):
+        session.commit()
+    session.rollback()

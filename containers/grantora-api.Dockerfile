@@ -17,9 +17,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml README.md alembic.ini ./
+COPY pyproject.toml README.md ./
 COPY src ./src
-COPY migrations ./migrations
 COPY containers/grantora-api-entrypoint.sh ./containers/grantora-api-entrypoint.sh
 
 RUN pip install --no-cache-dir --upgrade pip \

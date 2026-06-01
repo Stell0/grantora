@@ -1136,6 +1136,17 @@ latency_ms: integer
 
 ## Database Entities
 
+Development schema rule: SQLAlchemy models are the source for the current schema. During the pre-release phase, application startup creates missing tables from `Base.metadata.create_all()` on clean disposable PostgreSQL state or test schemas.
+
+Common model rules:
+
+- Mutable configuration tables include `created_at` and `updated_at` generated in UTC.
+- Audit and usage event `timestamp` values are generated in UTC.
+- Lifecycle statuses are constrained to `active` or `disabled`.
+- Secret statuses are constrained to `active` or `revoked`.
+- Capability schemas default to a closed empty object schema and must pass the same JSON Schema validation used by Admin APIs before persistence.
+- Query helpers must filter through active workspace-owned related records rather than trusting ids alone.
+
 Required tables:
 
 ```text
@@ -1176,15 +1187,34 @@ ON admin_credentials (token_hash, status);
 
 CREATE INDEX idx_admin_credentials_workspace_status
 ON admin_credentials (workspace_id, status);
+
+CREATE UNIQUE INDEX uq_bindings_active_lookup
+ON bindings (workspace_id, agent_id, user_id, capability_id)
+WHERE status = 'active';
+
+CREATE UNIQUE INDEX uq_secrets_active_owner
+ON secrets (workspace_id, application_instance_id, owner_type, owner_id)
+WHERE status = 'active';
 ```
 
-## Migration Rules
+Required uniqueness and constraints:
 
-- Use Alembic for every schema change.
-- Migrations must be deterministic and safe to run once.
-- Add indexes in the same migration as new lookup paths.
-- Do not drop or rewrite security-relevant data without an explicit migration note.
-- Update this file before implementing schema changes.
+- Workspace slugs are globally unique.
+- Application instance, agent and role slugs are unique per workspace.
+- User external ids are unique per workspace.
+- Agent token hashes and admin credential token hashes are unique.
+- Capability ids are globally unique.
+- Only one active binding may exist for a workspace, agent, user and capability.
+- Only one active secret may exist for a workspace, application instance, owner type and owner id.
+- Event counters and latency values are non-negative, and usage units are positive.
+
+## Development Schema Rules
+
+- Edit SQLAlchemy models directly while Grantora has no production installations.
+- Start with a clean disposable PostgreSQL volume or temporary test schema after model changes.
+- Let application startup create the current schema from model metadata.
+- Add indexes and constraints directly to the model change that introduces a lookup path or invariant.
+- Update this file before or with schema changes.
 
 ## APISIX Route Contract
 

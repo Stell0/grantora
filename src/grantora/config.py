@@ -32,7 +32,6 @@ class Settings(BaseSettings):
     )
     database_pool_size: int = Field(default=10, validation_alias="DATABASE_POOL_SIZE")
     database_max_overflow: int = Field(default=20, validation_alias="DATABASE_MAX_OVERFLOW")
-    migrations_auto_run: bool = Field(default=True, validation_alias="MIGRATIONS_AUTO_RUN")
     secret_encryption_key: str = Field(
         default="change-me-32-byte-base64-key",
         validation_alias="SECRET_ENCRYPTION_KEY",

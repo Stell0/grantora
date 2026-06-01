@@ -24,7 +24,7 @@ make release-image
 make release-image-smoke
 ```
 
-Until the Makefile exists, use direct tool commands such as `pytest`, `ruff check`, `ruff format --check` and `alembic upgrade head`.
+Until the Makefile exists, use direct tool commands such as `pytest`, `ruff check` and `ruff format --check`.
 
 `make demo-seed` and `make smoke` require local compose services plus `.env` values for the admin bootstrap token, token hash, token pepper and secret encryption key.
 
@@ -65,8 +65,7 @@ Required areas:
 Required areas:
 
 - PostgreSQL connection and session lifecycle
-- Alembic migrations from empty database to head
-- Alembic upgrade from the previous release fixture to head preserving data and policy
+- SQLAlchemy metadata creates the current schema in a disposable PostgreSQL schema
 - Admin creation of workspace, agent, user, application, capability, binding and secret
 - Runtime authentication with real database records
 - Invocation path with mock adapter
@@ -83,7 +82,7 @@ GRANTORA_INTEGRATION_APISIX_ADMIN_URL=http://localhost:9180
 GRANTORA_INTEGRATION_APISIX_ADMIN_KEY=$APISIX_ADMIN_KEY
 ```
 
-The PostgreSQL fixture uses a temporary schema inside the configured database and drops that schema after each test.
+The PostgreSQL fixture uses a temporary schema inside the configured database, creates the current schema from SQLAlchemy metadata and drops that schema after each test.
 
 ## End-To-End Tests
 

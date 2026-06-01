@@ -24,12 +24,12 @@ Grantora is a standalone capability gateway for agents. It lets agents use busin
 - [SECURITY.md](SECURITY.md): authentication, secrets and threat model
 - [TESTING.md](TESTING.md): required tests and acceptance matrix
 - [ADAPTERS.md](ADAPTERS.md): adapter interface and behavior rules
-- [OPERATIONS.md](OPERATIONS.md): local operation, migrations and deployment notes
+- [OPERATIONS.md](OPERATIONS.md): local operation, schema bootstrap and deployment notes
 
 ## Coding Conventions
 
 - Use Python FastAPI for the Gateway API.
-- Use SQLAlchemy or SQLModel plus Alembic for database models and migrations.
+- Use SQLAlchemy or SQLModel for database models; during development, create schema from metadata on disposable state.
 - Use Pydantic models for request, response and internal contract validation.
 - Use `httpx` for upstream HTTP calls.
 - Use structured JSON logging and never log secrets or authorization headers.
@@ -83,7 +83,7 @@ Until `Makefile` exists, use the equivalent direct commands documented in [TESTI
 
 - Runtime API paths, request bodies or response bodies
 - Admin API paths, request bodies or response bodies
-- Database entities, indexes or migration rules
+- Database entities, indexes or schema rules
 - Capability manifest fields
 - Adapter protocol, result type or error type
 - Standard error response shape
@@ -95,7 +95,7 @@ Until `Makefile` exists, use the equivalent direct commands documented in [TESTI
 - Code implemented
 - Tests added or updated
 - API contract updated when behavior changed
-- Database migration added when schema changed
+- Schema models, contract docs and tests updated when schema changed
 - Audit and usage behavior preserved
 - Authorization remains deny-by-default
 - No secrets leak in logs, responses, metrics or tests

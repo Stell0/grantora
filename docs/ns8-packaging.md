@@ -6,7 +6,7 @@ Grantora remains a standalone upstream application. An NS8 module may manage it,
 
 - Generate and preserve environment files containing static configuration and secret material.
 - Start the published Grantora API image, PostgreSQL, APISIX and APISIX etcd with network isolation equivalent to `deploy/compose.production.yml`.
-- Run `python -m alembic upgrade head` before switching traffic to a new Grantora image.
+- Use a clean or compatible PostgreSQL database; during development the API creates the current schema from SQLAlchemy metadata at startup.
 - Trigger APISIX reconciliation after install, restore and upgrade.
 - Back up PostgreSQL plus environment-managed `SECRET_ENCRYPTION_KEY`, token peppers, APISIX Admin key and any external secret-store configuration.
 - Expose UI or actions for health, readiness, APISIX sync status, backup, restore, smoke checks and secret rotation.
@@ -28,6 +28,6 @@ Grantora remains a standalone upstream application. An NS8 module may manage it,
 
 ## Acceptance Checks
 
-- A standalone deployment using `deploy/compose.production.yml` can start, migrate, sync APISIX and pass smoke tests.
+- A standalone deployment using `deploy/compose.production.yml` can start, sync APISIX and pass smoke tests.
 - Removing NS8-specific environment variables leaves bootstrap-token administration available.
 - Restoring PostgreSQL and environment secrets into a clean standalone compose deployment preserves policy and invocation behavior.

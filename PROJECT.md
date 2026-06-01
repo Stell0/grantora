@@ -242,7 +242,7 @@ MVP includes:
 ```text
 APISIX data-plane
 Gateway API service
-PostgreSQL schema and migrations
+PostgreSQL schema managed from SQLAlchemy models during development
 environment-only static configuration
 agent authentication
 workspace model
@@ -379,7 +379,7 @@ Recommended implementation:
 ```text
 Python FastAPI
 SQLAlchemy or SQLModel
-Alembic migrations
+SQLAlchemy metadata schema creation
 Pydantic models
 httpx for upstream HTTP calls
 prometheus_client for metrics
@@ -441,7 +441,7 @@ source of truth for gateway domain model
 audit and usage events
 secret metadata and encrypted secret values
 APISIX desired configuration
-schema migrations
+direct schema bootstrap from the current model metadata
 ```
 
 Recommended extensions/features:
@@ -1091,7 +1091,6 @@ DATABASE_URL=postgresql+psycopg://gateway:gateway@postgres:5432/gateway
 DATABASE_POOL_SIZE=10
 DATABASE_MAX_OVERFLOW=20
 DATABASE_SSLMODE=prefer
-MIGRATIONS_AUTO_RUN=true
 ```
 
 ## 16.3 Security
@@ -1155,14 +1154,11 @@ agent-capability-gateway/
   PROJECT.md
   LICENSE
   pyproject.toml
-  alembic.ini
   docker-compose.yml
   containers/
     gateway-api.Dockerfile
     apisix/
       config.template.yaml
-  migrations/
-    versions/
   src/
     gateway/
       __init__.py
@@ -1565,7 +1561,6 @@ prometheus optional
 ```bash
 make dev-up
 make dev-down
-make migrate
 make test
 make lint
 make format
@@ -1606,7 +1601,7 @@ error mapping
 ## 25.2 Integration tests
 
 ```text
-PostgreSQL migrations
+PostgreSQL metadata schema creation
 Gateway API with real PostgreSQL
 APISIX route reconciliation
 mock upstream application calls
@@ -1730,7 +1725,7 @@ Do not implement all adapters before proving the first end-to-end flow.
 ```text
 FastAPI project
 PostgreSQL connection
-Alembic migrations
+SQLAlchemy metadata schema creation
 Docker compose with APISIX + etcd + PostgreSQL + gateway-api
 health endpoints
 environment configuration

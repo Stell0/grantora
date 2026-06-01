@@ -47,6 +47,8 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         apisix_sync_task: asyncio.Task[None] | None = None
+        if hasattr(app.state.database, "create_schema"):
+            app.state.database.create_schema()
         if resolved_settings.apisix_sync_enabled:
             await _run_apisix_sync_once(app)
             apisix_sync_task = asyncio.create_task(

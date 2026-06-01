@@ -5,6 +5,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from grantora.config import Settings
+from grantora.db.models import Base
 
 
 class Database:
@@ -36,6 +37,9 @@ class Database:
     def ping(self) -> None:
         with self.engine.connect() as connection:
             connection.execute(text("SELECT 1"))
+
+    def create_schema(self) -> None:
+        Base.metadata.create_all(self.engine)
 
     def dispose(self) -> None:
         if self._engine is not None:

@@ -1,4 +1,4 @@
-.PHONY: test test-unit test-integration test-e2e test-all lint format format-check migrate demo-seed smoke retention backup-restore-smoke security-scan sbom container-scan release-security release-image release-image-smoke publish-image dev-up dev-down
+.PHONY: test test-unit test-integration test-e2e test-all lint format format-check demo-seed smoke retention backup-restore-smoke security-scan sbom container-scan release-security release-image release-image-smoke publish-image dev-up dev-down
 
 SECURITY_ARTIFACT_DIR ?= dist/security
 IMAGE ?= grantora-api:security
@@ -37,9 +37,6 @@ format:
 
 format-check:
 	ruff format --check .
-
-migrate:
-	alembic upgrade head
 
 demo-seed:
 	@set -a; \
@@ -93,7 +90,6 @@ release-image:
 release-image-smoke:
 	@container_id=$$(docker run --rm -d \
 		-p 127.0.0.1:$(RELEASE_SMOKE_PORT):8080 \
-		-e MIGRATIONS_AUTO_RUN=false \
 		-e DATABASE_URL=sqlite+pysqlite:///:memory: \
 		$(RELEASE_IMAGE)); \
 	cleanup() { docker rm -f "$$container_id" >/dev/null 2>&1 || true; }; \

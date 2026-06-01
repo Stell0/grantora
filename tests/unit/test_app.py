@@ -9,7 +9,7 @@ from prometheus_client.parser import text_string_to_metric_families
 
 from grantora.config import Settings
 from grantora.db import Base, Database
-from grantora.db.models import ApisixSyncStatus
+from grantora.db.models import ApisixSyncStatus, Workspace
 from grantora.logging import JsonLogFormatter
 from grantora.main import create_app
 from grantora.metrics import render_metrics
@@ -67,6 +67,22 @@ def test_startup_apisix_sync_disabled_never_writes(tmp_path: Path) -> None:
 
     assert apisix_client.puts == []
     assert sync_status is None
+
+
+def test_startup_creates_current_schema_from_metadata(tmp_path: Path) -> None:
+    settings = make_database_settings(tmp_path)
+    database = Database(settings)
+    app = create_app(settings=settings, database=database)
+
+    with TestClient(app):
+        pass
+
+    with database.session_factory() as session:
+        workspace = Workspace(slug="startup-schema", display_name="Startup Schema")
+        session.add(workspace)
+        session.commit()
+
+    database.dispose()
 
 
 def test_startup_apisix_sync_enabled_reconciles_once(tmp_path: Path) -> None:

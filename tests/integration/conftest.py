@@ -2,16 +2,13 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, make_url
 
-ROOT = Path(__file__).resolve().parents[2]
+from grantora.db import Base
 
 
 @dataclass(frozen=True)
@@ -51,13 +48,12 @@ def isolated_postgres_schema() -> IsolatedPostgresSchema:
 
 
 @pytest.fixture()
-def migrated_postgres_schema(
+def current_postgres_schema(
     isolated_postgres_schema: IsolatedPostgresSchema,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> IsolatedPostgresSchema:
-    monkeypatch.setenv("DATABASE_URL", isolated_postgres_schema.database_url)
-    alembic_config = Config(str(ROOT / "alembic.ini"))
-    command.upgrade(alembic_config, "head")
+    engine = create_engine(isolated_postgres_schema.database_url, pool_pre_ping=True)
+    Base.metadata.create_all(engine)
+    engine.dispose()
     return isolated_postgres_schema
 
 

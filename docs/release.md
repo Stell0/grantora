@@ -19,7 +19,7 @@ Publish the versioned image after tests, security gates and the image smoke pass
 make publish-image REGISTRY=ghcr.io/grantora
 ```
 
-The `Release Image` GitHub workflow runs on `v*` tags. It verifies that the tag matches `pyproject.toml`, builds the image with OCI labels, starts it with `MIGRATIONS_AUTO_RUN=false`, confirms `/healthz` reports the release version, and then pushes both `<version>` and `sha-<short-sha>` tags to GHCR.
+The `Release Image` GitHub workflow runs on `v*` tags. It verifies that the tag matches `pyproject.toml`, builds the image with OCI labels, starts it against a disposable SQLite database, confirms `/healthz` reports the release version, and then pushes both `<version>` and `sha-<short-sha>` tags to GHCR.
 
 ## Production Compose Example
 
@@ -29,19 +29,15 @@ Copy the production environment template and provide real secrets:
 cp deploy/production.env.example .env.production
 ```
 
-Start from a clean host:
+Start from a clean host. During the current development phase, the API creates the current schema from SQLAlchemy metadata when it starts:
 
 ```bash
 # Docker
 docker compose --env-file .env.production -f deploy/compose.production.yml pull
-docker compose --env-file .env.production -f deploy/compose.production.yml up -d postgres apisix-etcd
-docker compose --env-file .env.production -f deploy/compose.production.yml run --rm grantora-api python -m alembic upgrade head
 docker compose --env-file .env.production -f deploy/compose.production.yml up -d
 
 # Podman
 podman compose --env-file .env.production -f deploy/compose.production.yml pull
-podman compose --env-file .env.production -f deploy/compose.production.yml up -d postgres apisix-etcd
-podman compose --env-file .env.production -f deploy/compose.production.yml run --rm grantora-api python -m alembic upgrade head
 podman compose --env-file .env.production -f deploy/compose.production.yml up -d
 ```
 
@@ -57,9 +53,9 @@ For production deployments, point `GRANTORA_API_URL` at the private operator-acc
 
 ## Upgrade Procedure
 
-Before upgrading:
+Grantora has no production installations and no in-place database upgrade policy yet. Validate release candidates on disposable PostgreSQL state or on a restored backup that matches the current SQLAlchemy models. Before changing image tags:
 
-1. Read the release notes, migration notes and this checklist.
+1. Read the release notes and this checklist.
 2. Back up PostgreSQL and the environment-managed secret material.
 3. Run `make backup-restore-smoke` against disposable state when validating the release candidate.
 4. Confirm `make security-scan`, `make sbom` and `make container-scan IMAGE=<candidate-image>` pass.
@@ -70,13 +66,11 @@ Upgrade one release:
 # Docker
 docker compose --env-file .env.production -f deploy/compose.production.yml pull grantora-api
 docker compose --env-file .env.production -f deploy/compose.production.yml stop grantora-api
-docker compose --env-file .env.production -f deploy/compose.production.yml run --rm grantora-api python -m alembic upgrade head
 docker compose --env-file .env.production -f deploy/compose.production.yml up -d grantora-api
 
 # Podman
 podman compose --env-file .env.production -f deploy/compose.production.yml pull grantora-api
 podman compose --env-file .env.production -f deploy/compose.production.yml stop grantora-api
-podman compose --env-file .env.production -f deploy/compose.production.yml run --rm grantora-api python -m alembic upgrade head
 podman compose --env-file .env.production -f deploy/compose.production.yml up -d grantora-api
 
 curl -sS "$GRANTORA_API_URL/healthz"
@@ -91,7 +85,7 @@ Rollback is a restore operation unless a release explicitly documents a safe dow
 ## Release Checklist
 
 - [ ] `pyproject.toml` version and `grantora.__version__` match.
-- [ ] Contracts, migrations, docs and changelog entries are updated for intentional behavior changes.
+- [ ] Contracts, models, docs and changelog entries are updated for intentional behavior changes.
 - [ ] `make test-unit` passes.
 - [ ] `make test-integration` passes against disposable PostgreSQL and APISIX.
 - [ ] `make test-e2e` passes through APISIX.

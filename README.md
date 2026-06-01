@@ -84,7 +84,7 @@ podman run --rm --network grantora \
   localhost/grantora-run_grantora-api:latest -m grantora.cli.smoke
 ```
 
-The compose file starts `grantora-api`, `postgres`, `apisix` and `apisix-etcd`. When `MIGRATIONS_AUTO_RUN=true`, the API container runs Alembic migrations before starting the FastAPI app factory from `src/grantora/main.py`.
+The compose file starts `grantora-api`, `postgres`, `apisix` and `apisix-etcd`. During development, the FastAPI startup path creates the current database schema from SQLAlchemy metadata, so a clean PostgreSQL volume needs no manual database command before `make demo-seed`.
 
 `make demo-seed` uses only supported Admin APIs to create or reuse a demo workspace, mock application, user, capability, role, binding, secret and agent. It writes the one-time agent token and demo ids to `.grantora-demo.env`, which is ignored by git. `make smoke` loads `.env` and `.grantora-demo.env`, checks health and readiness, syncs APISIX, discovers the demo capability through APISIX, invokes the mock phonebook capability, verifies filtered OpenAPI, lists MCP-compatible tools and calls the MCP bridge.
 
@@ -123,9 +123,9 @@ Security hardening is enabled by default: request bodies are bounded by `MAX_REQ
 
 Release security gates write artifacts under `dist/security/`: dependency audit JSON, CycloneDX SBOM and container vulnerability JSON. `make container-scan IMAGE=grantora-api:security` requires Trivy and fails on high or critical findings.
 
-Release packaging uses versioned Grantora API container images. `make release-image` builds `ghcr.io/grantora/grantora-api:<version>` from `pyproject.toml`, and `make release-image-smoke` starts that image with migrations disabled and checks that `/healthz` reports the same version. The tag-driven `Release Image` workflow performs the same clean image smoke before pushing versioned and SHA tags to GHCR.
+Release packaging uses versioned Grantora API container images. `make release-image` builds `ghcr.io/grantora/grantora-api:<version>` from `pyproject.toml`, and `make release-image-smoke` starts that image against a disposable SQLite database and checks that `/healthz` reports the same version. The tag-driven `Release Image` workflow performs the same clean image smoke before pushing versioned and SHA tags to GHCR.
 
-Production deployment examples live under [deploy/](deploy/), starting with [deploy/compose.production.yml](deploy/compose.production.yml). The production compose file publishes only APISIX, keeps PostgreSQL and the APISIX Admin API off host ports, and runs migrations explicitly before starting the API. See [docs/release.md](docs/release.md) for the release checklist and upgrade procedure, and [docs/ns8-packaging.md](docs/ns8-packaging.md) for future NS8 module boundaries.
+Production deployment examples live under [deploy/](deploy/), starting with [deploy/compose.production.yml](deploy/compose.production.yml). The production compose file publishes only APISIX and keeps PostgreSQL and the APISIX Admin API off host ports. See [docs/release.md](docs/release.md) for the release checklist and upgrade procedure, and [docs/ns8-packaging.md](docs/ns8-packaging.md) for future NS8 module boundaries.
 
 ## Agent Tooling
 

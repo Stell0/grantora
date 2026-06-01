@@ -36,6 +36,12 @@ from grantora.schemas import (
     AdminUserResponse,
     AdminWorkspaceListResponse,
     AdminWorkspaceResponse,
+    CapabilityInvokeResponse,
+    CapabilityListResponse,
+    MCPToolCallResponse,
+    MCPToolListResponse,
+    MeResponse,
+    UsageMeResponse,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -68,6 +74,15 @@ ADMIN_RESPONSE_MODELS: tuple[type[BaseModel], ...] = (
     AdminWorkspaceResponse,
 )
 
+RUNTIME_RESPONSE_MODELS: tuple[type[BaseModel], ...] = (
+    CapabilityInvokeResponse,
+    CapabilityListResponse,
+    MCPToolCallResponse,
+    MCPToolListResponse,
+    MeResponse,
+    UsageMeResponse,
+)
+
 
 def test_admin_response_models_match_contract_fixture() -> None:
     actual = {
@@ -76,6 +91,15 @@ def test_admin_response_models_match_contract_fixture() -> None:
     }
 
     assert actual == load_contract_fixture()["response_models"]
+
+
+def test_runtime_response_models_match_contract_fixture() -> None:
+    actual = {
+        model.__name__: sorted(model.model_fields)
+        for model in sorted(RUNTIME_RESPONSE_MODELS, key=lambda item: item.__name__)
+    }
+
+    assert actual == load_contract_fixture()["runtime_response_models"]
 
 
 def test_admin_error_response_shape_matches_contract_fixture(tmp_path: Path) -> None:

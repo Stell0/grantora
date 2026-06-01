@@ -17,7 +17,7 @@ Keep this file current. Every completed task must have a test or smoke-check pat
 - Every runtime invocation attempt must produce audit and usage records, including denials.
 - Safe errors must not leak tokens, secret values, internal URLs, stack traces or upstream response bodies.
 - No migration code is used while Grantora is in development.
-- Do not add Alembic migrations or migration commands until the project has a real release/upgrade policy.
+- Do not add schema migration tooling or migration commands until the project has a real release/upgrade policy.
 - During development, schema changes are applied by editing SQLAlchemy models and recreating disposable databases.
 
 ## Development Database Rule
@@ -58,12 +58,12 @@ Implemented or substantially present:
 - Demo seed and smoke commands.
 - Retention command for audit and usage rows.
 
-Known cleanup required after this plan change:
+Completed cleanup after this plan change:
 
 - Remove migration dependency and files.
 - Remove migration environment variables from examples and compose files.
 - Replace migration startup behavior with development schema creation.
-- Update tests and docs that still mention Alembic or migration workflows.
+- Update tests and docs that still mention legacy migration workflows.
 
 ## Milestone 1 - Remove Migration System
 
@@ -71,14 +71,14 @@ Goal: make the repository consistent with the development-phase database rule.
 
 Tasks:
 
-- [ ] Remove Alembic from project dependencies. Test: clean install succeeds without Alembic.
-- [ ] Delete `alembic.ini`. Test: repository search finds no active Alembic config.
-- [ ] Delete the `migrations/` tree. Test: repository search finds no migration files.
-- [ ] Remove `MIGRATIONS_AUTO_RUN` from settings, compose files, environment examples, release workflow and docs. Test: repository search finds no `MIGRATIONS_AUTO_RUN` reference.
-- [ ] Remove `make migrate`. Test: `make -n migrate` fails because the target no longer exists.
-- [ ] Remove migration commands from release and operations docs. Test: docs search finds no `alembic` command.
-- [ ] Add a development schema bootstrap based on current SQLAlchemy metadata. Test: clean PostgreSQL volume starts and `make demo-seed` can create objects without manual DB commands.
-- [ ] Update integration tests so they create/drop disposable schemas from metadata, not migrations. Test: `make test-integration` passes when PostgreSQL test variables are configured.
+- [x] Remove the legacy schema migration dependency. Test: clean install succeeds without the removed package.
+- [x] Delete the legacy migration config. Test: repository search finds no active migration config.
+- [x] Delete the legacy migration tree. Test: repository search finds no migration files.
+- [x] Remove the legacy migration auto-run environment variable from settings, compose files, environment examples, release workflow and docs. Test: repository search finds no legacy variable reference.
+- [x] Remove the legacy migration make target. Test: invoking the removed target fails because it no longer exists.
+- [x] Remove migration commands from release and operations docs. Test: docs search finds no legacy migration command.
+- [x] Add a development schema bootstrap based on current SQLAlchemy metadata. Test: clean PostgreSQL volume starts and `make demo-seed` can create objects without manual DB commands.
+- [x] Update integration tests so they create/drop disposable schemas from metadata, not migrations. Test: `make test-integration` passes when PostgreSQL test variables are configured.
 
 ## Milestone 2 - Rebase Documentation On Current Architecture
 
@@ -86,12 +86,12 @@ Goal: make documentation describe the actual standalone development model.
 
 Tasks:
 
-- [ ] Update `README.md` local run instructions to state that the development API creates the current schema automatically.
-- [ ] Update `OPERATIONS.md` to remove migration and platform-packaging assumptions.
-- [ ] Update `TESTING.md` to remove migration-specific test requirements.
-- [ ] Update `STRUCTURE.md` if it mentions migration directories or upgrade flows.
-- [ ] Update `CONTRACTS.md` only if API behavior changed.
-- [ ] Keep future external packaging out of this plan.
+- [x] Update `README.md` local run instructions to state that the development API creates the current schema automatically.
+- [x] Update `OPERATIONS.md` to remove migration and platform-packaging assumptions.
+- [x] Update `TESTING.md` to remove migration-specific test requirements.
+- [x] Update `STRUCTURE.md` if it mentions migration directories or upgrade flows.
+- [x] Update `CONTRACTS.md` only if API behavior changed.
+- [x] Keep future external packaging out of this plan.
 
 ## Milestone 3 - Stabilize Core Contracts
 
@@ -99,11 +99,11 @@ Goal: make Grantora’s core product model explicit enough for coding agents and
 
 Tasks:
 
-- [ ] Confirm `PROJECT.md` defines the standalone product boundary.
-- [ ] Confirm `CONTRACTS.md` defines Admin API, Runtime API, capability, audit, usage, error and APISIX contracts.
-- [ ] Confirm `STRUCTURE.md` matches the actual repository layout.
-- [ ] Confirm `AGENTS.md` instructs coding agents to update contracts before implementation changes.
-- [ ] Add contract tests for every public response shape that is considered stable.
+- [x] Confirm `PROJECT.md` defines the standalone product boundary.
+- [x] Confirm `CONTRACTS.md` defines Admin API, Runtime API, capability, audit, usage, error and APISIX contracts.
+- [x] Confirm `STRUCTURE.md` matches the actual repository layout.
+- [x] Confirm `AGENTS.md` instructs coding agents to update contracts before implementation changes.
+- [x] Add contract tests for every public response shape that is considered stable.
 
 Acceptance:
 
@@ -117,12 +117,12 @@ Goal: make the current direct schema safe and coherent while migrations are inte
 
 Tasks:
 
-- [ ] Review all SQLAlchemy models for missing constraints, indexes and cascade behavior.
-- [ ] Ensure workspace isolation is enforced through model relationships and query helpers.
-- [ ] Ensure unique constraints exist for slugs, external ids, role names and capability ids where needed.
-- [ ] Ensure status fields are normalized and validated by API schemas.
-- [ ] Ensure JSON schema fields have sane defaults and validation before persistence.
-- [ ] Ensure timestamps are timezone-aware and consistently generated.
+- [x] Review all SQLAlchemy models for missing constraints, indexes and cascade behavior.
+- [x] Ensure workspace isolation is enforced through model relationships and query helpers.
+- [x] Ensure unique constraints exist for slugs, external ids, role names and capability ids where needed.
+- [x] Ensure status fields are normalized and validated by API schemas.
+- [x] Ensure JSON schema fields have sane defaults and validation before persistence.
+- [x] Ensure timestamps are timezone-aware and consistently generated.
 
 Tests:
 
@@ -146,6 +146,7 @@ Tasks:
 - [ ] Verify audit and usage query APIs with filters and pagination.
 - [ ] Verify APISIX sync/status APIs.
 - [ ] Ensure all write APIs produce safe audit records.
+- [ ] Commit changes
 
 Tests:
 
@@ -166,6 +167,7 @@ Tasks:
 - [ ] Ensure disabled bindings deny immediately.
 - [ ] Ensure role permissions require both `capability.describe` and the risk-specific invoke permission.
 - [ ] Ensure admin-risk capabilities are unavailable to runtime agents unless a future explicit contract changes this.
+- [ ] Commit changes
 
 Tests:
 
@@ -204,8 +206,9 @@ Tasks:
 - [ ] Verify upstream credentials are injected only by adapters or controlled broker code.
 - [ ] Verify upstream timeouts and response-size limits.
 - [ ] Verify upstream errors normalize to safe Grantora error codes.
-- [ ] Verify read-only retry policy is bounded and never applies to side-effecting/destructive capabilities by default.
+- [ ] Verify read-only retry policy is bounded and never applies to side-effe   cting/destructive capabilities by default.
 - [ ] Document adapter extension rules.
+- [ ] Commit changes
 
 Tests:
 
@@ -226,6 +229,7 @@ Tasks:
 - [ ] Verify Admin API key and internal APISIX details never leak in errors or logs.
 - [ ] Verify sync status and drift reports are safe for operators.
 - [ ] Verify admin routes are not exposed through public APISIX routes unless explicitly intended.
+- [ ] Commit changes
 
 Tests:
 
@@ -245,6 +249,7 @@ Tasks:
 - [ ] Verify audit and usage retention support dry-run and destructive modes.
 - [ ] Verify backup/restore smoke works with PostgreSQL dump/restore plus APISIX resync.
 - [ ] Update runbooks for common failures: invalid admin hash, bad Fernet key, missing secret, APISIX Admin API unavailable and upstream timeout.
+- [ ] Commit changes
 
 Tests:
 
@@ -265,6 +270,7 @@ Tasks:
 - [ ] Keep external secret references fail-closed until a backend is explicitly configured.
 - [ ] Keep optional OIDC/header-based admin identity disabled by default and safe behind trusted proxies only.
 - [ ] Add dependency audit, SBOM and container scan gates.
+- [ ] Commit changes
 
 Tests:
 
@@ -284,6 +290,7 @@ Tasks:
 - [ ] Ensure `make lint` and `make format-check` are documented.
 - [ ] Ensure CI runs unit checks and clearly gates optional infrastructure tests.
 - [ ] Remove CI references to migrations.
+- [ ] Commit changes
 
 ## Completion Criteria For Standalone Core
 

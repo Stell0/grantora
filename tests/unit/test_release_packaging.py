@@ -48,15 +48,17 @@ def test_local_compose_uses_fully_qualified_images_for_noninteractive_podman() -
     assert "image: docker.io/apache/apisix:3.10.0-debian" in compose
 
 
-
 def test_local_compose_uses_canonical_grantora_auth_variables() -> None:
     compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 
-    assert "GRANTORA_AGENT_TOKEN_PEPPER: ${GRANTORA_AGENT_TOKEN_PEPPER:-change-me-agent-token-pepper}" in compose
-    assert "GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH: ${GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH:-change-me}" in compose
+    assert (
+        "GRANTORA_AGENT_TOKEN_PEPPER: ${GRANTORA_AGENT_TOKEN_PEPPER:-change-me-agent-token-pepper}"
+    ) in compose
+    assert (
+        "GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH: ${GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH:-change-me}"
+    ) in compose
     assert "${AGENT_TOKEN_PEPPER:-" not in compose
     assert "${ADMIN_BOOTSTRAP_TOKEN_HASH:-" not in compose
-
 
 
 def test_local_compose_renders_apisix_template_with_selinux_relabel() -> None:
@@ -64,7 +66,6 @@ def test_local_compose_renders_apisix_template_with_selinux_relabel() -> None:
 
     assert "/usr/local/apisix/conf/config-template.yaml:ro,Z" in compose
     assert "/usr/local/bin/render-and-start-apisix.sh:ro,Z" in compose
-
 
 
 def test_production_compose_uses_published_image_and_isolates_private_services() -> None:
@@ -76,7 +77,6 @@ def test_production_compose_uses_published_image_and_isolates_private_services()
     assert "image: docker.io/bitnamilegacy/etcd:3.5" in compose
     assert "image: docker.io/apache/apisix:3.10.0-debian" in compose
     assert "build:" not in compose
-    assert "MIGRATIONS_AUTO_RUN: ${MIGRATIONS_AUTO_RUN:-false}" in compose
     assert "GRANTORA_PUBLIC_BASE_URL: ${GRANTORA_PUBLIC_BASE_URL:?set" in compose
     assert "SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?set" in compose
     assert (
@@ -97,7 +97,6 @@ def test_production_compose_uses_published_image_and_isolates_private_services()
     assert "SECRET_ENCRYPTION_KEY=replace-with-generated-fernet-key" in env_example
 
 
-
 def test_production_compose_renders_apisix_template_with_selinux_relabel() -> None:
     compose = (ROOT / "deploy" / "compose.production.yml").read_text(encoding="utf-8")
 
@@ -113,13 +112,16 @@ def test_release_and_ns8_docs_cover_upgrade_and_standalone_requirements() -> Non
 
     assert "make release-image" in release_doc
     assert "make release-image-smoke" in release_doc
-    assert "python -m alembic upgrade head" in release_doc
+    assert "creates the current schema from SQLAlchemy metadata" in release_doc
     assert 'curl -sS "$GRANTORA_API_URL/healthz"' in release_doc
     assert "make backup-restore-smoke" in release_doc
     assert "make security-scan" in release_doc
     assert "make sbom" in release_doc
     assert "make container-scan IMAGE=<candidate-image>" in release_doc
-    assert "podman compose --env-file .env.production -f deploy/compose.production.yml up -d" in release_doc
+    assert (
+        "podman compose --env-file .env.production -f deploy/compose.production.yml up -d"
+        in release_doc
+    )
     assert "## Release Checklist" in release_doc
     assert 'git commit -m "feat: add release packaging and production deployment"' in release_doc
 
