@@ -36,6 +36,7 @@ Grantora is a standalone capability gateway for agents. It lets agents use busin
 - Keep runtime code under `src/grantora/` using the ownership boundaries in [STRUCTURE.md](STRUCTURE.md).
 - Add or update tests in `tests/` for every behavior change.
 - Prefer small, explicit modules over broad utility files.
+- Keep [PROJECT.md](PROJECT.md), [STRUCTURE.md](STRUCTURE.md) and other reference documents up to date with architectural decisions and rationale.
 
 ## Development Workflow
 
@@ -45,6 +46,8 @@ Grantora is a standalone capability gateway for agents. It lets agents use busin
 4. Update [CONTRACTS.md](CONTRACTS.md) before changing public APIs, database schema, adapter interfaces, error formats or APISIX route shape.
 5. Update [SECURITY.md](SECURITY.md) before changing authentication, authorization, token handling, secret handling or audit behavior.
 6. Run the narrowest relevant tests, then the project test target before finalizing.
+7. Update [README.md](README.md) and [TESTING.md](TESTING.md) with any new environment variables, test targets or manual acceptance steps.
+8. Update [PROJECT.md](PROJECT.md) and [STRUCTURE.md](STRUCTURE.md) with any architectural decisions or rationale.
 
 ## How To Run Tests
 
@@ -96,3 +99,6 @@ Until `Makefile` exists, use the equivalent direct commands documented in [TESTI
 - Audit and usage behavior preserved
 - Authorization remains deny-by-default
 - No secrets leak in logs, responses, metrics or tests
+
+## Commit Messages
+Use /commit skill for commits
