@@ -43,7 +43,7 @@ from grantora.openapi import (
     build_capability_openapi,
     build_mcp_tool_list,
     build_runtime_openapi,
-    capability_tool_name,
+    capability_tool_name_map,
 )
 from grantora.schemas import (
     AgentSummary,
@@ -554,11 +554,13 @@ def _get_mcp_capability_by_tool_name(
     user: User,
     tool_name: str,
 ) -> Capability | None:
-    for capability in sorted(
+    visible_capabilities = sorted(
         _list_visible_capabilities(session, agent, user),
-        key=lambda visible_capability: visible_capability.id,
-    ):
-        if capability_tool_name(capability.id) == tool_name:
+        key=lambda capability: capability.id,
+    )
+    tool_names = capability_tool_name_map(visible_capabilities)
+    for capability in visible_capabilities:
+        if tool_names[capability.id] == tool_name:
             return capability
     return None
 

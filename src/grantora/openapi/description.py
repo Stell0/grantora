@@ -9,7 +9,7 @@ from fastapi.routing import APIRoute
 
 from grantora import __version__
 from grantora.db.models import Capability
-from grantora.openapi.tools import capability_tool_name
+from grantora.openapi.tools import capability_tool_name, capability_tool_name_map
 
 
 def build_runtime_openapi(
@@ -39,6 +39,7 @@ def build_capability_openapi(
     public_base_url: str | None = None,
 ) -> dict[str, Any]:
     sorted_capabilities = sorted(capabilities, key=lambda capability: capability.id)
+    tool_names = capability_tool_name_map(sorted_capabilities)
     document = {
         "openapi": "3.1.0",
         "info": {
@@ -47,7 +48,13 @@ def build_capability_openapi(
             "description": "Capability operations allowed for the authenticated agent and user.",
         },
         "paths": {
-            f"/v1/invoke/{capability.id}": {"post": _capability_operation(capability, user=user)}
+            f"/v1/invoke/{capability.id}": {
+                "post": _capability_operation(
+                    capability,
+                    user=user,
+                    tool_name=tool_names[capability.id],
+                )
+            }
             for capability in sorted_capabilities
         },
         "components": {
@@ -88,13 +95,13 @@ def capability_operation_id(capability_id: str) -> str:
     return f"invoke_{capability_tool_name(capability_id)}"
 
 
-def _capability_operation(capability: Capability, *, user: str) -> dict[str, Any]:
+def _capability_operation(capability: Capability, *, user: str, tool_name: str) -> dict[str, Any]:
     return {
         "tags": ["capabilities"],
         "summary": capability.name,
-        "operationId": capability_operation_id(capability.id),
+        "operationId": f"invoke_{tool_name}",
         "x-grantora-capability-id": capability.id,
-        "x-grantora-tool-name": capability_tool_name(capability.id),
+        "x-grantora-tool-name": tool_name,
         "x-grantora-risk-class": capability.risk_class,
         "requestBody": {
             "required": True,

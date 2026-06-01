@@ -5,6 +5,8 @@ from grantora.capabilities.permissions import (
 from grantora.capabilities.validation import (
     CapabilitySchemaValidationError,
     check_json_schema,
+    validate_capability_definition,
+    validate_capability_template_definition,
     validate_json_schema,
 )
 
@@ -13,5 +15,7 @@ __all__ = [
     "DESCRIBE_PERMISSION",
     "check_json_schema",
     "invoke_permission_for_risk_class",
+    "validate_capability_definition",
+    "validate_capability_template_definition",
     "validate_json_schema",
 ]

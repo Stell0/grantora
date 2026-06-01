@@ -179,12 +179,12 @@ Goal: keep capability definitions as the source of truth for agent tools.
 
 Tasks:
 
-- [ ] Verify capability IDs, names, descriptions, schemas, provider type, risk class and adapter config are validated.
-- [ ] Verify runtime capability list is filtered and paginated.
-- [ ] Verify filtered OpenAPI is generated from the same authorized capability set.
-- [ ] Verify MCP-compatible tool listing is generated from the same authorized capability set.
-- [ ] Verify MCP tool call maps to the same invocation path and authorization checks.
-- [ ] Add capability template coverage for common provider setup.
+- [x] Verify capability IDs, names, descriptions, schemas, provider type, risk class and adapter config are validated.
+- [x] Verify runtime capability list is filtered and paginated.
+- [x] Verify filtered OpenAPI is generated from the same authorized capability set.
+- [x] Verify MCP-compatible tool listing is generated from the same authorized capability set.
+- [x] Verify MCP tool call maps to the same invocation path and authorization checks.
+- [x] Add capability template coverage for common provider setup.
 
 Tests:
 

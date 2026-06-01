@@ -4,6 +4,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
+from grantora.capabilities import validate_capability_template_definition
+
 
 @dataclass(frozen=True)
 class CapabilityTemplate:
@@ -138,6 +140,26 @@ CAPABILITY_TEMPLATES = {
     template.id: template
     for template in (NETHVOICE_PHONEBOOK_SEARCH_TEMPLATE, NEXTCLOUD_FILES_SEARCH_TEMPLATE)
 }
+
+
+def _validate_capability_template_registry() -> None:
+    for template in CAPABILITY_TEMPLATES.values():
+        validate_capability_template_definition(
+            capability_id=template.id,
+            name=template.name,
+            provider_type=template.provider_type,
+            adapter=template.adapter,
+            operation=template.operation,
+            auth_mode=template.auth_mode,
+            risk_class=template.risk_class,
+            input_schema=template.input_schema,
+            output_schema=template.output_schema,
+            required_secret_types=template.required_secret_types,
+            upstream_permissions=template.upstream_permissions,
+        )
+
+
+_validate_capability_template_registry()
 
 
 def get_capability_template(template_id: str) -> CapabilityTemplate | None:

@@ -21,7 +21,11 @@ from grantora.apisix import (
 from grantora.audit import record_audit_event
 from grantora.auth import TOKEN_HASH_ALGORITHM, create_agent_token, hash_token
 from grantora.auth.dependencies import AdminBootstrap, AdminPrincipal, DatabaseSession
-from grantora.capabilities import CapabilitySchemaValidationError, check_json_schema
+from grantora.capabilities import (
+    CapabilitySchemaValidationError,
+    check_json_schema,
+    validate_capability_definition,
+)
 from grantora.capabilities.permissions import DESCRIBE_PERMISSION, RISK_CLASS_PERMISSIONS
 from grantora.config import Settings
 from grantora.db.models import (
@@ -353,8 +357,7 @@ def create_capability(
             "Application provider does not match the capability",
         )
 
-    _check_capability_schema(payload.input_schema)
-    _check_capability_schema(payload.output_schema)
+    _check_capability_definition(payload)
     _check_no_raw_passthrough(payload.operation, payload.input_schema)
 
     capability = Capability(
@@ -1400,6 +1403,25 @@ def _require_same_workspace(
 def _check_capability_schema(schema: dict[str, object]) -> None:
     try:
         check_json_schema(schema)
+    except CapabilitySchemaValidationError as exc:
+        raise GrantoraAPIError(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, exc.code, exc.message
+        ) from exc
+
+
+def _check_capability_definition(payload: AdminCapabilityCreateRequest) -> None:
+    try:
+        validate_capability_definition(
+            capability_id=payload.id,
+            name=payload.name,
+            provider_type=payload.provider_type,
+            adapter=payload.adapter,
+            operation=payload.operation,
+            auth_mode=payload.auth_mode,
+            risk_class=payload.risk_class,
+            input_schema=payload.input_schema,
+            output_schema=payload.output_schema,
+        )
     except CapabilitySchemaValidationError as exc:
         raise GrantoraAPIError(
             status.HTTP_422_UNPROCESSABLE_CONTENT, exc.code, exc.message

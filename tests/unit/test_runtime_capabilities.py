@@ -336,6 +336,50 @@ def test_mcp_tool_list_generator_uses_stable_names_and_capability_mapping(
     assert tool_list == load_json_fixture("mcp_tool_list.json")
 
 
+def test_mcp_tool_names_are_stable_and_unique_when_capability_ids_collide(
+    api_context: APIContext,
+) -> None:
+    records = add_runtime_records(api_context)
+    add_colliding_bound_capability(api_context, records)
+    add_secret(
+        api_context, records, owner_type="user", owner_id=records.user_id, value="user-token"
+    )
+
+    tools_response = api_context.client.get(
+        "/v1/mcp/tools?user=alice",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+    openapi_response = api_context.client.get(
+        "/v1/capabilities/openapi.json?user=alice",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+    call_response = api_context.client.post(
+        "/v1/mcp/call",
+        headers={
+            **authorization_headers("grt_agent_runtime"),
+            "X-Request-Id": "req_mcp_collision",
+        },
+        json={
+            "user": "alice",
+            "name": "mock_phonebook_search_f3b0ae3b",
+            "arguments": {"query": "Mario", "limit": 5},
+        },
+    )
+
+    assert tools_response.status_code == 200
+    assert openapi_response.status_code == 200
+    assert call_response.status_code == 200
+    assert [tool["name"] for tool in tools_response.json()["tools"]] == [
+        "mock_phonebook_search_8db26d62",
+        "mock_phonebook_search_f3b0ae3b",
+    ]
+    assert mcp_tool_capability_map(tools_response.json()) == openapi_tool_capability_map(
+        openapi_response.json()
+    )
+    assert call_response.json()["_meta"]["grantora/capability_id"] == records.capability_id
+    assert api_context.adapter.calls[-1]["capability_id"] == records.capability_id
+
+
 def test_capability_invocation_validates_authorization_and_reaches_adapter(
     api_context: APIContext,
 ) -> None:
@@ -1453,6 +1497,42 @@ def add_second_bound_capability(api_context: APIContext, records: RuntimeRecords
             provider_type="mock",
             adapter="recording",
             operation="phonebook.search.extra",
+            auth_mode="user",
+            risk_class="read_only",
+            input_schema=phonebook_input_schema(),
+            output_schema=phonebook_output_schema(),
+        )
+        binding = Binding(
+            workspace=workspace,
+            agent=agent,
+            user=user,
+            capability=capability,
+            role=role,
+        )
+        session.add_all([capability, binding])
+        session.commit()
+
+
+def add_colliding_bound_capability(api_context: APIContext, records: RuntimeRecords) -> None:
+    with api_context.database.session_factory() as session:
+        workspace = session.get(Workspace, records.workspace_id)
+        application = session.get(ApplicationInstance, records.application_id)
+        agent = session.get(Agent, records.agent_id)
+        user = session.get(User, records.user_id)
+        role = session.get(Role, records.role_id)
+        assert workspace is not None
+        assert application is not None
+        assert agent is not None
+        assert user is not None
+        assert role is not None
+        capability = Capability(
+            id="mock-phonebook-search",
+            workspace=workspace,
+            application_instance=application,
+            name="Search colliding phonebook",
+            provider_type="mock",
+            adapter="recording",
+            operation="phonebook.search.colliding",
             auth_mode="user",
             risk_class="read_only",
             input_schema=phonebook_input_schema(),

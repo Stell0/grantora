@@ -71,7 +71,7 @@ Rules:
 
 - Include only allowed capabilities.
 - Include a `servers` entry using `GRANTORA_PUBLIC_BASE_URL` when configured.
-- Use stable operation ids derived from capability ids.
+- Use stable operation ids derived from capability ids. If multiple allowed capability ids normalize to the same tool name, append deterministic hash suffixes so generated operation ids remain unique.
 - Include capability-specific invocation paths that map back to capability ids.
 - Do not include admin APIs.
 
@@ -86,7 +86,7 @@ Query parameters:
 Rules:
 
 - Build the list from the same filtered capability set used by `GET /v1/capabilities/openapi.json`.
-- Tool names are stable and derived from capability ids.
+- Tool names are stable and derived from capability ids. If multiple allowed capability ids normalize to the same name, Grantora appends deterministic hash suffixes.
 - Each tool descriptor includes the capability input schema.
 - Each tool descriptor includes metadata mapping back to the Grantora capability id and invocation path.
 - Do not include upstream URLs, secrets or adapter private configuration.
@@ -478,9 +478,11 @@ Success response wraps a `capability` object with all capability contract metada
 Rules:
 
 - Capability ids are globally unique stable identifiers.
+- Capability ids, names, provider types, adapter ids, operations, auth modes, risk classes and schemas are validated before persistence.
 - The referenced application instance must belong to the same active workspace.
 - `input_schema` and `output_schema` must be valid JSON Schemas.
 - Valid `auth_mode` and `risk_class` values are the values documented in the capability contract.
+- Private adapter configuration is not accepted in the capability create contract.
 
 ### GET /v1/admin/capability-templates
 
@@ -496,6 +498,7 @@ Success response wraps a `templates` array. Each template includes `id`, `name`,
 Rules:
 
 - Templates contain safe setup metadata only; they must not include base URLs, secrets, tokens or provider-private configuration.
+- Built-in templates are validated against the capability definition rules before they are exposed or instantiated.
 - Template schemas are the canonical examples for creating common capabilities without hand-writing JSON Schema.
 
 ### POST /v1/admin/capabilities/from-template

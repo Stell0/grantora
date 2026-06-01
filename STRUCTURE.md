@@ -68,13 +68,13 @@ src/grantora/
   apisix/                 APISIX Admin API client and reconciler
   db/                     SQLAlchemy models, session and persistence helpers
   schemas/                Pydantic request and response models
-  openapi/                filtered OpenAPI and future MCP tool descriptions
+  openapi/                filtered OpenAPI and MCP tool descriptions
   cli/                    local human workflow commands
 ```
 
 ## API Modules
 
-- `src/grantora/api/runtime.py`: `/v1/me`, `/v1/capabilities`, `/v1/invoke/{capability_id}`, `/v1/usage/me`.
+- `src/grantora/api/runtime.py`: `/v1/me`, `/v1/capabilities`, `/v1/capabilities/openapi.json`, `/v1/mcp/tools`, `/v1/mcp/call`, `/v1/invoke/{capability_id}`, `/v1/usage/me`.
 - `src/grantora/api/admin.py`: `/v1/admin/*` management endpoints.
 - `src/grantora/api/health.py`: `/healthz` and `/readyz`.
 - `src/grantora/main.py`: `/metrics` when enabled.

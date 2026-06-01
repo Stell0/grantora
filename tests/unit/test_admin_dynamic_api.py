@@ -917,6 +917,84 @@ def test_admin_rejects_remote_reference_capability_schemas(api_context: APIConte
     assert response.json()["error"]["code"] == "capability_schema_invalid"
 
 
+def test_admin_rejects_invalid_capability_definition_before_persistence(
+    api_context: APIContext,
+) -> None:
+    workspace = post_admin(
+        api_context,
+        "/v1/admin/workspaces",
+        {"slug": "definition-acme", "display_name": "Definition Acme"},
+    )["workspace"]
+    workspace_id = UUID(workspace["id"])
+    application = post_admin(
+        api_context,
+        "/v1/admin/applications",
+        {
+            "workspace_id": str(workspace_id),
+            "slug": "mock-app",
+            "display_name": "Mock App",
+            "provider_type": "mock",
+            "base_url": "https://mock.example.test",
+        },
+    )["application"]
+    application_id = UUID(application["id"])
+
+    invalid_requests = [
+        ({"id": "Mock.phonebook.search"}, "request_validation_failed"),
+        ({"name": ""}, "request_validation_failed"),
+        ({"provider_type": "mock provider"}, "request_validation_failed"),
+        ({"adapter": "mock adapter"}, "request_validation_failed"),
+        ({"adapter_config": {"path": "/raw"}}, "request_validation_failed"),
+        ({"risk_class": "root"}, "request_validation_failed"),
+        ({"output_schema": {"type": "object"}}, "capability_schema_invalid"),
+    ]
+
+    for override, expected_code in invalid_requests:
+        response = api_context.client.post(
+            "/v1/admin/capabilities",
+            headers=authorization_headers("admin-token"),
+            json={**capability_payload(workspace_id, application_id), **override},
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == expected_code
+
+    capabilities_response = api_context.client.get(
+        f"/v1/admin/capabilities?workspace_id={workspace_id}&include_disabled=true",
+        headers=authorization_headers("admin-token"),
+    )
+
+    assert capabilities_response.status_code == 200
+    assert capabilities_response.json()["capabilities"] == []
+
+
+def test_builtin_capability_templates_are_valid_safe_and_cover_common_providers(
+    api_context: APIContext,
+) -> None:
+    response = api_context.client.get(
+        "/v1/admin/capability-templates",
+        headers=authorization_headers("admin-token"),
+    )
+
+    assert response.status_code == 200
+    templates = response.json()["templates"]
+    assert [template["id"] for template in templates] == [
+        "nethvoice.phonebook.search",
+        "nextcloud.files.search",
+    ]
+    assert {template["provider_type"] for template in templates} == {"nethvoice", "nextcloud"}
+    assert "base_url" not in response.text
+    assert "secret_value" not in response.text.lower()
+    assert "https://" not in response.text.lower()
+    assert "password" not in response.text.lower()
+    assert "cookie" not in response.text.lower()
+    for template in templates:
+        assert template["input_schema"]["additionalProperties"] is False
+        assert template["output_schema"]["additionalProperties"] is False
+        assert template["required_secret_types"]
+        assert template["upstream_permissions"]
+
+
 def test_admin_can_instantiate_capability_from_template(api_context: APIContext) -> None:
     workspace = post_admin(
         api_context,

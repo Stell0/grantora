@@ -129,6 +129,8 @@ class CapabilityAdminSummary(BaseModel):
 
 
 class AdminCapabilityCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: CapabilityId
     workspace_id: UUID
     application_instance_id: UUID
@@ -176,6 +178,8 @@ class AdminCapabilityTemplateListResponse(BaseModel):
 
 
 class AdminCapabilityFromTemplateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     template_id: CapabilityId
     workspace_id: UUID
     application_instance_id: UUID
