@@ -21,7 +21,7 @@ Grantora remains a standalone upstream application. An NS8 module may manage it,
 
 ## NS8 Integration Points
 
-- Optional OIDC/NS8 admin identity can be enabled with `FEATURE_OIDC=true` only behind a trusted component that strips and sets the configured identity header.
+- Optional OIDC/NS8 admin identity can be enabled with `FEATURE_OIDC=true` only behind a trusted component in `OIDC_TRUSTED_PROXY_CIDRS` that strips and sets the configured identity header.
 - Account-domain integration should create or map users through supported Admin APIs.
 - Module backup hooks should reuse the documented PostgreSQL dump/restore and APISIX resync order.
 - Module upgrades should use versioned container tags and the same release checklist in `docs/release.md`.

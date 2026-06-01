@@ -15,7 +15,7 @@ Required groups:
 - Core service: environment, bind address, public base URL and logging.
 - Database: PostgreSQL URL and pool size.
 - Security: `SECRET_ENCRYPTION_KEY`, `GRANTORA_AGENT_TOKEN_PEPPER` or `AGENT_TOKEN_PEPPER`, and `GRANTORA_ADMIN_BOOTSTRAP_TOKEN_HASH` or `ADMIN_BOOTSTRAP_TOKEN_HASH`.
-- Security hardening: `MAX_REQUEST_BODY_BYTES`, optional `FEATURE_OIDC` plus OIDC subject settings, and optional `FEATURE_EXTERNAL_SECRET_STORE`.
+- Security hardening: `MAX_REQUEST_BODY_BYTES`, optional `FEATURE_OIDC` plus OIDC subject/proxy settings, and optional `FEATURE_EXTERNAL_SECRET_STORE`.
 - Local workflow helpers: `ADMIN_BOOTSTRAP_TOKEN`, `GRANTORA_API_URL`, `GRANTORA_RUNTIME_URL` and optional `DEMO_*` values used by `make demo-seed` and `make smoke`.
 - APISIX: public URL, Admin API URL, Admin API key and sync settings.
 - Observability: metrics, audit retention, usage retention, request id header and optional tracing.
@@ -25,7 +25,7 @@ Agent and admin bootstrap token hashes use the `hmac-sha256:<hex>` format. Gener
 
 DB-backed admin credentials use the same token hash format and can be scoped to a workspace. Scoped admins can manage resources in that workspace only; APISIX sync/status and global permission creation require a super-admin principal.
 
-OIDC/NS8 admin identity remains optional. Leave `FEATURE_OIDC=false` for standalone bootstrap-token operation. When enabling it, set `OIDC_ADMIN_SUBJECTS` to an allowlist and deploy Grantora behind a trusted component that strips incoming identity headers before setting `OIDC_SUBJECT_HEADER`.
+OIDC/NS8 admin identity remains optional. Leave `FEATURE_OIDC=false` for standalone bootstrap-token operation. When enabling it, set `OIDC_ADMIN_SUBJECTS` to an allowlist, set `OIDC_TRUSTED_PROXY_CIDRS` to the proxy source addresses Grantora should trust, and deploy Grantora behind a component that strips incoming identity headers before setting `OIDC_SUBJECT_HEADER`.
 
 Grantora rejects oversized JSON requests before route handlers using `MAX_REQUEST_BODY_BYTES`. Application `base_url` values are constrained to HTTP/HTTPS origins and must not point at localhost, private addresses, bare hostnames or provider paths.
 
@@ -297,6 +297,8 @@ make backup-restore-smoke
 That workflow seeds the demo, writes a PostgreSQL custom dump, tears down compose volumes, restores PostgreSQL from the dump, waits for Grantora readiness, resyncs APISIX and verifies a demo capability invocation still succeeds.
 
 Provider adapter integration tests use sanitized mock upstream payloads and `httpx` transports, so they do not require network access to NethVoice or Nextcloud.
+
+The `Tests` GitHub workflow runs `make lint`, `make format-check` and `make test-unit` on pull requests and pushes to `main`. The PostgreSQL integration and compose-backed e2e jobs are gated behind manual `workflow_dispatch` inputs named `run_integration` and `run_e2e`; `run_backup_restore_smoke` opts into the destructive backup/restore smoke inside the e2e job.
 
 ## Product Acceptance
 

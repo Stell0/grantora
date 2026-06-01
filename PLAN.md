@@ -261,13 +261,13 @@ Goal: close security gaps before any production release.
 
 Tasks:
 
-- [ ] Deny raw upstream passthrough by default.
-- [ ] Enforce request body size limits for admin and runtime APIs.
-- [ ] Validate URLs to reduce SSRF risk.
-- [ ] Validate slugs, ids and JSON schemas strictly.
-- [ ] Keep external secret references fail-closed until a backend is explicitly configured.
-- [ ] Keep optional OIDC/header-based admin identity disabled by default and safe behind trusted proxies only.
-- [ ] Add dependency audit, SBOM and container scan gates.
+- [x] Deny raw upstream passthrough by default. Test: `tests/unit/test_admin_dynamic_api.py`.
+- [x] Enforce request body size limits for admin and runtime APIs. Test: `tests/unit/test_app.py`.
+- [x] Validate URLs to reduce SSRF risk. Test: `tests/unit/test_admin_dynamic_api.py`.
+- [x] Validate slugs, ids and JSON schemas strictly. Test: `tests/unit/test_admin_dynamic_api.py`, `tests/unit/test_models.py`.
+- [x] Keep external secret references fail-closed until a backend is explicitly configured. Test: `tests/unit/test_runtime_capabilities.py`.
+- [x] Keep optional OIDC/header-based admin identity disabled by default and safe behind trusted proxies only. Test: `tests/unit/test_auth_api.py`, `tests/unit/test_deployment_config.py`.
+- [x] Add dependency audit, SBOM and container scan gates. Test: `tests/unit/test_deployment_config.py`; smoke: `make security-scan`, `make sbom`, `make container-scan IMAGE=grantora-api:security`.
 
 
 Tests:
@@ -281,13 +281,13 @@ Goal: make local and CI validation obvious.
 
 Tasks:
 
-- [ ] Ensure `make test-unit` works from a clean Python environment.
-- [ ] Ensure `make test-integration` uses disposable PostgreSQL schemas created from metadata.
-- [ ] Ensure `make test-e2e` uses documented compose services and APISIX.
-- [ ] Ensure `make demo-seed` and `make smoke` work on a clean disposable stack.
-- [ ] Ensure `make lint` and `make format-check` are documented.
-- [ ] Ensure CI runs unit checks and clearly gates optional infrastructure tests.
-- [ ] Remove CI references to migrations.
+- [x] Ensure `make test-unit` works from a clean Python environment. Test: `make test-unit`; CI: `.github/workflows/tests.yml`.
+- [x] Ensure `make test-integration` uses disposable PostgreSQL schemas created from metadata. Test: `tests/integration/conftest.py`; CI: manually gated `run_integration` job.
+- [x] Ensure `make test-e2e` uses documented compose services and APISIX. Test: `tests/e2e/test_runtime_through_apisix.py`; CI: manually gated `run_e2e` job.
+- [x] Ensure `make demo-seed` and `make smoke` work on a clean disposable stack. Smoke: `make demo-seed`, `make smoke`; CI: manually gated `run_e2e` job.
+- [x] Ensure `make lint` and `make format-check` are documented. Test: `tests/unit/test_deployment_config.py`; docs: `README.md`, `TESTING.md`.
+- [x] Ensure CI runs unit checks and clearly gates optional infrastructure tests. Test: `tests/unit/test_deployment_config.py`; CI: `.github/workflows/tests.yml`.
+- [x] Remove CI references to migrations. Test: repository search for legacy migration CI commands.
 
 
 ## Completion Criteria For Standalone Core

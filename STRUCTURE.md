@@ -113,6 +113,8 @@ APISIX must not become the business authorization engine. Grantora API performs 
 
 ## Release And Deployment Assets
 
+- `.github/workflows/tests.yml`: unit/lint CI and manually gated integration/e2e validation.
+- `.github/workflows/security.yml`: dependency audit, SBOM and container vulnerability gates.
 - `.github/workflows/release.yml`: versioned Grantora API image publishing and clean image smoke.
 - `deploy/compose.production.yml`: standalone production compose example with APISIX as the only published service.
 - `deploy/production.env.example`: non-secret production environment template.

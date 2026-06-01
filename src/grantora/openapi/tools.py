@@ -38,11 +38,7 @@ def capability_tool_name_map(capabilities: Iterable[Capability]) -> dict[str, st
         capability.id: capability_tool_name(capability.id) for capability in sorted_capabilities
     }
     base_name_counts = Counter(base_names.values())
-    duplicate_base_names = {
-        base_name
-        for base_name, count in base_name_counts.items()
-        if count > 1
-    }
+    duplicate_base_names = {base_name for base_name, count in base_name_counts.items() if count > 1}
 
     used_names: set[str] = set()
     tool_names: dict[str, str] = {}

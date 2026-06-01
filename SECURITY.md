@@ -25,11 +25,11 @@ An authenticated agent is not automatically allowed to act for any user. Runtime
 - Bootstrap admin access uses an environment-provided token hash.
 - Bootstrap and DB-backed admin token hashes use the same `hmac-sha256:<hex>` peppered hash format as agent tokens.
 - DB-backed admin credentials may be super-admin credentials or scoped to one workspace. Scoped admins must not read, create or mutate resources outside their workspace.
-- Optional OIDC/NS8 admin identity is disabled by default. When enabled, Grantora accepts only explicitly allowlisted subjects from the configured trusted subject header.
+- Optional OIDC/NS8 admin identity is disabled by default. When enabled, Grantora accepts only explicitly allowlisted subjects from the configured trusted subject header and trusted proxy CIDR ranges.
 - Admin endpoints are separate from runtime agent endpoints.
 - Agent bearer tokens are not admin tokens and must fail admin authentication.
 - Admin changes to security-relevant objects must create audit records.
-- OIDC or NS8 integration must preserve the same authorization checks and must be deployed behind a trusted component that strips spoofed identity headers.
+- OIDC or NS8 integration must preserve the same authorization checks and must be deployed behind a trusted component that strips spoofed identity headers before forwarding from `OIDC_TRUSTED_PROXY_CIDRS`.
 
 ## Secret Encryption
 

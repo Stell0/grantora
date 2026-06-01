@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from ipaddress import ip_address, ip_network
 from typing import Annotated
 from uuid import UUID
 
@@ -143,6 +144,13 @@ def _oidc_admin_principal(request: Request) -> AdminPrincipal | None:
     subject = request.headers.get(settings.oidc_subject_header)
     if not subject:
         return None
+    if not _request_from_trusted_oidc_proxy(request, settings.oidc_trusted_proxy_cidrs):
+        raise GrantoraAPIError(
+            status.HTTP_401_UNAUTHORIZED,
+            "admin_auth_invalid",
+            "Invalid admin token",
+            AUTHENTICATE_HEADER,
+        )
 
     allowed_subjects = {
         item.strip() for item in settings.oidc_admin_subjects.split(",") if item.strip()
@@ -155,6 +163,31 @@ def _oidc_admin_principal(request: Request) -> AdminPrincipal | None:
             AUTHENTICATE_HEADER,
         )
     return AdminPrincipal(actor_type="admin_oidc", subject=subject)
+
+
+def _request_from_trusted_oidc_proxy(request: Request, trusted_proxy_cidrs: str) -> bool:
+    client_host = request.client.host if request.client else None
+    if not client_host:
+        return False
+
+    try:
+        client_address = ip_address(client_host)
+    except ValueError:
+        return False
+
+    trusted = False
+    for raw_network in trusted_proxy_cidrs.split(","):
+        network_value = raw_network.strip()
+        if not network_value:
+            continue
+        try:
+            network = ip_network(network_value, strict=False)
+        except ValueError:
+            return False
+        if client_address in network:
+            trusted = True
+
+    return trusted
 
 
 def _store_admin_principal(request: Request, principal: AdminPrincipal) -> None:

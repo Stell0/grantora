@@ -4,7 +4,7 @@ Grantora tests must prove that agents only see and invoke allowed capabilities, 
 
 ## Test Commands
 
-Expected project commands once the skeleton exists:
+Project validation commands:
 
 ```bash
 make test
@@ -13,6 +13,7 @@ make test-integration
 make test-e2e
 make lint
 make format
+make format-check
 make demo-seed
 make smoke
 make retention RETENTION_FLAGS=--dry-run
@@ -24,8 +25,6 @@ make release-image
 make release-image-smoke
 ```
 
-Until the Makefile exists, use direct tool commands such as `pytest`, `ruff check` and `ruff format --check`.
-
 `make demo-seed` and `make smoke` require local compose services plus `.env` values for the admin bootstrap token, token hash, token pepper and secret encryption key.
 
 `make test-integration` loads `.env` and runs `tests/integration/`. Tests skip when `GRANTORA_INTEGRATION_DATABASE_URL` or `GRANTORA_INTEGRATION_APISIX_ADMIN_URL` is absent. If those variables are set, unavailable PostgreSQL or APISIX services are test failures.
@@ -33,6 +32,10 @@ Until the Makefile exists, use direct tool commands such as `pytest`, `ruff chec
 `make test-e2e` loads `.env` and runs `tests/e2e/`. Tests skip unless `GRANTORA_RUN_E2E=1` and `ADMIN_BOOTSTRAP_TOKEN` are set. Once enabled, the suite expects the direct API and APISIX public URL to be reachable and fails on infrastructure errors.
 
 `make backup-restore-smoke` is destructive and should only be used against disposable compose data. The opt-in e2e coverage skips unless `GRANTORA_RUN_BACKUP_RESTORE_SMOKE=1` is set.
+
+## Continuous Integration
+
+The `Tests` workflow runs `make lint`, `make format-check` and `make test-unit` on pull requests and pushes to `main` from a clean Python 3.12 environment. Infrastructure-backed jobs are manual workflow-dispatch gates: `run_integration` starts a disposable PostgreSQL service for `make test-integration`, while `run_e2e` starts the documented compose stack and runs `make demo-seed`, `make smoke` and `make test-e2e`. `run_backup_restore_smoke` adds the destructive backup/restore smoke to the e2e job.
 
 ## Unit Tests
 

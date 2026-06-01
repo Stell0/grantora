@@ -110,9 +110,7 @@ def backup_restore_config_from_env() -> BackupRestoreSmokeConfig:
         dump_path=Path(_env("GRANTORA_BACKUP_RESTORE_DUMP_PATH", ".grantora-backup.dump")),
         compose_command=compose_command,
         timeout_seconds=_float_env("GRANTORA_WORKFLOW_TIMEOUT_SECONDS", 10.0),
-        startup_timeout_seconds=_float_env(
-            "GRANTORA_BACKUP_RESTORE_STARTUP_TIMEOUT_SECONDS", 60.0
-        ),
+        startup_timeout_seconds=_float_env("GRANTORA_BACKUP_RESTORE_STARTUP_TIMEOUT_SECONDS", 60.0),
         postgres_service=_env("GRANTORA_BACKUP_POSTGRES_SERVICE", "postgres"),
         postgres_user=_env("POSTGRES_USER", "grantora"),
         postgres_db=_env("POSTGRES_DB", "grantora"),

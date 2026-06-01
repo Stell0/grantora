@@ -95,8 +95,11 @@ make test-unit
 make test-integration
 make test-e2e
 make backup-restore-smoke
+make lint
+make format-check
 make security-scan
 make sbom
+make container-scan IMAGE=grantora-api:security
 make release-image
 make release-image-smoke
 ```
@@ -119,9 +122,11 @@ Tracing is optional and disabled by default. Set `OTEL_TRACING_ENABLED=true`, ke
 
 Supported real provider templates currently include `nethvoice.phonebook.search` and `nextcloud.files.search`. Admins can list templates with `GET /v1/admin/capability-templates` and create a capability with `POST /v1/admin/capabilities/from-template`.
 
-Security hardening is enabled by default: request bodies are bounded by `MAX_REQUEST_BODY_BYTES`, application base URLs are constrained to safe origins, raw upstream passthrough capabilities are rejected, and admin tokens can be DB-backed and workspace-scoped. Optional OIDC/NS8 admin identity is disabled unless `FEATURE_OIDC=true` and the subject is allowlisted.
+Security hardening is enabled by default: request bodies are bounded by `MAX_REQUEST_BODY_BYTES`, application base URLs are constrained to safe origins, raw upstream passthrough capabilities are rejected, and admin tokens can be DB-backed and workspace-scoped. Optional OIDC/NS8 admin identity is disabled unless `FEATURE_OIDC=true`, the subject is allowlisted, and the request comes from `OIDC_TRUSTED_PROXY_CIDRS`.
 
 Release security gates write artifacts under `dist/security/`: dependency audit JSON, CycloneDX SBOM and container vulnerability JSON. `make container-scan IMAGE=grantora-api:security` requires Trivy and fails on high or critical findings.
+
+The `Tests` workflow runs `make lint`, `make format-check` and `make test-unit` on pull requests and pushes to `main`. Its PostgreSQL integration and compose-backed e2e jobs are manual `workflow_dispatch` options so infrastructure-heavy checks stay explicit.
 
 Release packaging uses versioned Grantora API container images. `make release-image` builds `ghcr.io/grantora/grantora-api:<version>` from `pyproject.toml`, and `make release-image-smoke` starts that image against a disposable SQLite database and checks that `/healthz` reports the same version. The tag-driven `Release Image` workflow performs the same clean image smoke before pushing versioned and SHA tags to GHCR.
 

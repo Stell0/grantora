@@ -252,7 +252,7 @@ def test_oidc_admin_subject_is_optional_and_allowlisted(tmp_path: Path) -> None:
     Base.metadata.create_all(database.engine)
     app = create_app(settings=settings, database=database)
 
-    with TestClient(app) as client:
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
         allowed_response = client.get(
             "/v1/admin/workspaces",
             headers={"X-Grantora-Admin-Subject": "ns8-admin@example.test"},
@@ -265,6 +265,29 @@ def test_oidc_admin_subject_is_optional_and_allowlisted(tmp_path: Path) -> None:
     assert allowed_response.status_code == 200
     assert denied_response.status_code == 401
     assert denied_response.json()["error"]["code"] == "admin_auth_invalid"
+
+
+def test_oidc_admin_subject_requires_trusted_proxy(tmp_path: Path) -> None:
+    settings = Settings(
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'grantora.sqlite'}",
+        environment="test",
+        admin_bootstrap_token_hash=None,
+        feature_oidc=True,
+        oidc_admin_subjects="ns8-admin@example.test",
+        oidc_trusted_proxy_cidrs="10.0.0.0/8",
+    )
+    database = Database(settings)
+    Base.metadata.create_all(database.engine)
+    app = create_app(settings=settings, database=database)
+
+    with TestClient(app, client=("203.0.113.10", 50000)) as client:
+        response = client.get(
+            "/v1/admin/workspaces",
+            headers={"X-Grantora-Admin-Subject": "ns8-admin@example.test"},
+        )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "admin_auth_invalid"
 
 
 def make_test_settings(tmp_path: Path) -> Settings:

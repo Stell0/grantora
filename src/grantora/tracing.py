@@ -82,8 +82,10 @@ def create_trace_manager(
         )
     )
     resolved_exporter = exporter or _default_exporter(settings)
-    use_simple = use_simple_processor if use_simple_processor is not None else (
-        settings.environment == "test"
+    use_simple = (
+        use_simple_processor
+        if use_simple_processor is not None
+        else (settings.environment == "test")
     )
     if use_simple:
         provider.add_span_processor(SimpleSpanProcessor(resolved_exporter))

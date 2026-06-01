@@ -131,6 +131,10 @@ class Settings(BaseSettings):
         default="X-Grantora-Admin-Subject",
         validation_alias="OIDC_SUBJECT_HEADER",
     )
+    oidc_trusted_proxy_cidrs: str = Field(
+        default="127.0.0.1/32,::1/128",
+        validation_alias="OIDC_TRUSTED_PROXY_CIDRS",
+    )
     feature_external_secret_store: bool = Field(
         default=False,
         validation_alias="FEATURE_EXTERNAL_SECRET_STORE",

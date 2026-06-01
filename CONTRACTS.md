@@ -248,9 +248,9 @@ Rules:
 
 ## Admin API
 
-Admin endpoints require admin authentication. Bootstrap admin access uses an environment-provided token hash. DB-backed admin credentials may also authenticate with the same bearer-token hash format and can be scoped to one workspace. Optional OIDC/NS8 admin identity is disabled by default and only accepts explicitly allowlisted subjects when enabled.
+Admin endpoints require admin authentication. Bootstrap admin access uses an environment-provided token hash. DB-backed admin credentials may also authenticate with the same bearer-token hash format and can be scoped to one workspace. Optional OIDC/NS8 admin identity is disabled by default and only accepts explicitly allowlisted subjects from trusted proxy addresses when enabled.
 
-Admin clients authenticate with `Authorization: Bearer <admin_token>`. Grantora verifies bootstrap tokens against `ADMIN_BOOTSTRAP_TOKEN_HASH`, or DB-backed admin credentials against the `admin_credentials.token_hash` column, using the same peppered token hash format as agent tokens. OIDC admin subjects are read from `OIDC_SUBJECT_HEADER` only when `FEATURE_OIDC=true` and the subject appears in `OIDC_ADMIN_SUBJECTS`.
+Admin clients authenticate with `Authorization: Bearer <admin_token>`. Grantora verifies bootstrap tokens against `ADMIN_BOOTSTRAP_TOKEN_HASH`, or DB-backed admin credentials against the `admin_credentials.token_hash` column, using the same peppered token hash format as agent tokens. OIDC admin subjects are read from `OIDC_SUBJECT_HEADER` only when `FEATURE_OIDC=true`, the request client address matches `OIDC_TRUSTED_PROXY_CIDRS`, and the subject appears in `OIDC_ADMIN_SUBJECTS`.
 
 Rules:
 

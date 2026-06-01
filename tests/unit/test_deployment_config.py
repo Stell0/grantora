@@ -17,6 +17,7 @@ def test_compose_wires_apisix_sync_settings_and_local_admin_port() -> None:
     assert "USAGE_RETENTION_DAYS: ${USAGE_RETENTION_DAYS:-365}" in compose
     assert "OTEL_TRACING_ENABLED: ${OTEL_TRACING_ENABLED:-false}" in compose
     assert "OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-grantora}" in compose
+    assert "OIDC_TRUSTED_PROXY_CIDRS: ${OIDC_TRUSTED_PROXY_CIDRS:-127.0.0.1/32,::1/128}" in compose
     assert '"127.0.0.1:${APISIX_ADMIN_PORT:-9180}:9180"' in compose
 
 
@@ -84,6 +85,7 @@ def test_security_environment_reference_is_wired_to_settings(monkeypatch) -> Non
     monkeypatch.setenv("FEATURE_OIDC", "true")
     monkeypatch.setenv("OIDC_ADMIN_SUBJECTS", "alice@example.test,bob@example.test")
     monkeypatch.setenv("OIDC_SUBJECT_HEADER", "X-Forwarded-User")
+    monkeypatch.setenv("OIDC_TRUSTED_PROXY_CIDRS", "10.0.0.0/8,192.168.0.0/16")
     monkeypatch.setenv("FEATURE_EXTERNAL_SECRET_STORE", "true")
 
     settings = Settings(_env_file=None)
@@ -92,6 +94,7 @@ def test_security_environment_reference_is_wired_to_settings(monkeypatch) -> Non
     assert settings.feature_oidc is True
     assert settings.oidc_admin_subjects == "alice@example.test,bob@example.test"
     assert settings.oidc_subject_header == "X-Forwarded-User"
+    assert settings.oidc_trusted_proxy_cidrs == "10.0.0.0/8,192.168.0.0/16"
     assert settings.feature_external_secret_store is True
 
 
@@ -112,3 +115,22 @@ def test_release_security_gates_are_defined() -> None:
     assert "actions/upload-artifact" in workflow
     assert "container-vulnerabilities.json" in workflow
     assert 'exit-code: "1"' in workflow
+
+
+def test_developer_workflow_ci_is_defined() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+
+    assert "name: Tests" in workflow
+    assert "pull_request:" in workflow
+    assert "make lint" in workflow
+    assert "make format-check" in workflow
+    assert "make test-unit" in workflow
+    assert "run_integration:" in workflow
+    assert "GRANTORA_INTEGRATION_DATABASE_URL" in workflow
+    assert "make test-integration" in workflow
+    assert "run_e2e:" in workflow
+    assert "docker compose up --build -d --wait" in workflow
+    assert "make demo-seed" in workflow
+    assert "make smoke" in workflow
+    assert "make test-e2e" in workflow
+    assert "run_backup_restore_smoke:" in workflow
