@@ -146,7 +146,6 @@ Tasks:
 - [x] Verify audit and usage query APIs with filters and pagination.
 - [x] Verify APISIX sync/status APIs.
 - [x] Ensure all write APIs produce safe audit records.
-- [ ] Commit changes
 
 Tests:
 
@@ -159,15 +158,14 @@ Goal: make agent-on-behalf-of-user behavior deterministic and auditable.
 
 Tasks:
 
-- [ ] Define a single runtime user-selection rule for all runtime endpoints.
-- [ ] Ensure agent authentication rejects missing, invalid, disabled and revoked credentials.
-- [ ] Ensure a disabled workspace denies all runtime access.
-- [ ] Ensure disabled users deny discovery and invocation.
-- [ ] Ensure disabled capabilities are hidden and cannot be invoked by direct id.
-- [ ] Ensure disabled bindings deny immediately.
-- [ ] Ensure role permissions require both `capability.describe` and the risk-specific invoke permission.
-- [ ] Ensure admin-risk capabilities are unavailable to runtime agents unless a future explicit contract changes this.
-- [ ] Commit changes
+- [x] Define a single runtime user-selection rule for all runtime endpoints.
+- [x] Ensure agent authentication rejects missing, invalid, disabled and revoked credentials.
+- [x] Ensure a disabled workspace denies all runtime access.
+- [x] Ensure disabled users deny discovery and invocation.
+- [x] Ensure disabled capabilities are hidden and cannot be invoked by direct id.
+- [x] Ensure disabled bindings deny immediately.
+- [x] Ensure role permissions require both `capability.describe` and the risk-specific invoke permission.
+- [x] Ensure admin-risk capabilities are unavailable to runtime agents unless a future explicit contract changes this.
 
 Tests:
 
@@ -208,7 +206,7 @@ Tasks:
 - [ ] Verify upstream errors normalize to safe Grantora error codes.
 - [ ] Verify read-only retry policy is bounded and never applies to side-effe   cting/destructive capabilities by default.
 - [ ] Document adapter extension rules.
-- [ ] Commit changes
+
 
 Tests:
 
@@ -229,7 +227,7 @@ Tasks:
 - [ ] Verify Admin API key and internal APISIX details never leak in errors or logs.
 - [ ] Verify sync status and drift reports are safe for operators.
 - [ ] Verify admin routes are not exposed through public APISIX routes unless explicitly intended.
-- [ ] Commit changes
+
 
 Tests:
 
@@ -249,7 +247,7 @@ Tasks:
 - [ ] Verify audit and usage retention support dry-run and destructive modes.
 - [ ] Verify backup/restore smoke works with PostgreSQL dump/restore plus APISIX resync.
 - [ ] Update runbooks for common failures: invalid admin hash, bad Fernet key, missing secret, APISIX Admin API unavailable and upstream timeout.
-- [ ] Commit changes
+
 
 Tests:
 
@@ -270,7 +268,7 @@ Tasks:
 - [ ] Keep external secret references fail-closed until a backend is explicitly configured.
 - [ ] Keep optional OIDC/header-based admin identity disabled by default and safe behind trusted proxies only.
 - [ ] Add dependency audit, SBOM and container scan gates.
-- [ ] Commit changes
+
 
 Tests:
 
@@ -290,7 +288,7 @@ Tasks:
 - [ ] Ensure `make lint` and `make format-check` are documented.
 - [ ] Ensure CI runs unit checks and clearly gates optional infrastructure tests.
 - [ ] Remove CI references to migrations.
-- [ ] Commit changes
+
 
 ## Completion Criteria For Standalone Core
 

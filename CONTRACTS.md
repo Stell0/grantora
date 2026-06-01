@@ -43,6 +43,8 @@ Query parameters:
 Rules:
 
 - Return only active capabilities with an active binding for the agent and user.
+- Select the runtime user by the `user` external id inside the authenticated agent's workspace; missing or disabled users return an empty capability set.
+- Require the role to grant both `capability.describe` and the capability risk class's runtime invoke permission.
 - Return schema and safe metadata only.
 - Do not return upstream URLs, secrets or adapter private configuration.
 
@@ -164,7 +166,10 @@ Success response:
 Rules:
 
 - Authenticate the agent.
-- Validate workspace, agent, user, capability, binding and role permission.
+- Select the runtime user from the request body by external id inside the authenticated agent's workspace.
+- Validate workspace, agent, user, capability, binding, role status and role permissions.
+- Require both `capability.describe` and the risk-specific invoke permission.
+- Deny capabilities with risk class `admin`; runtime agents have no admin-risk invoke permission in this contract.
 - Validate input against the capability input schema.
 - Resolve the upstream secret according to [SECURITY.md](SECURITY.md).
 - Invoke the adapter through the adapter protocol.

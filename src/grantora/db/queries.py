@@ -101,6 +101,23 @@ def get_active_user_by_external_id(
     return session.scalar(statement)
 
 
+def get_user_by_external_id(
+    session: Session,
+    workspace_id: UUID,
+    external_id: str,
+) -> User | None:
+    statement = (
+        select(User)
+        .join(User.workspace)
+        .where(
+            User.workspace_id == workspace_id,
+            User.external_id == external_id,
+            Workspace.status == ACTIVE_STATUS,
+        )
+    )
+    return session.scalar(statement)
+
+
 def get_active_capability_by_id(
     session: Session,
     workspace_id: UUID,

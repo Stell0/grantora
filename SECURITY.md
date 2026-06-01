@@ -49,7 +49,7 @@ Every invocation must check:
 - User is active and belongs to the workspace when the capability is user-scoped.
 - Capability is active and belongs to the workspace.
 - Binding is active for workspace, agent, user and capability.
-- Role grants the permission required by the capability risk class.
+- Role is active and grants both `capability.describe` and the permission required by the capability risk class.
 - Secret or delegated session is resolvable.
 
 No binding means no access. No valid user delegation means no user-scoped invocation. No usable upstream secret means fail closed.
@@ -118,6 +118,7 @@ Logs should include request id, workspace id, agent id, user id, capability id, 
 ## Revocation Behavior
 
 - Disabled agents cannot authenticate.
+- Disabled workspaces deny runtime authentication for their agents.
 - Disabled users cannot be used for user-scoped invocation.
 - Disabled capabilities cannot be discovered or invoked.
 - Disabled bindings deny access immediately.

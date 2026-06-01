@@ -545,6 +545,184 @@ def test_capability_invocation_is_denied_without_binding_and_records_events(
     assert usage_event.status == "denied"
 
 
+def test_capability_invocation_requires_describe_and_invoke_permissions(
+    api_context: APIContext,
+) -> None:
+    records = add_runtime_records(api_context)
+    remove_role_permission(api_context, records, "capability.describe")
+    add_secret(
+        api_context, records, owner_type="user", owner_id=records.user_id, value="user-token"
+    )
+
+    discovery_response = api_context.client.get(
+        "/v1/capabilities?user=alice",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+    invoke_response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.search",
+        headers={
+            **authorization_headers("grt_agent_runtime"),
+            "X-Request-Id": "req_missing_describe",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+
+    assert discovery_response.status_code == 200
+    assert discovery_response.json()["capabilities"] == []
+    assert invoke_response.status_code == 403
+    assert invoke_response.json()["error"] == {
+        "code": "capability_denied",
+        "message": "Capability is not allowed for this agent and user",
+    }
+    assert api_context.adapter.calls == []
+
+    with api_context.database.session_factory() as session:
+        audit_event = session.scalar(
+            select(AuditEvent).where(AuditEvent.request_id == "req_missing_describe")
+        )
+        usage_event = session.scalar(
+            select(UsageEvent).where(UsageEvent.capability_id == records.capability_id)
+        )
+
+    assert audit_event is not None
+    assert audit_event.decision == "deny"
+    assert audit_event.error_code == "capability_denied"
+    assert usage_event is not None
+    assert usage_event.status == "denied"
+
+
+def test_capability_invocation_requires_risk_specific_invoke_permission(
+    api_context: APIContext,
+) -> None:
+    records = add_runtime_records(api_context)
+    add_bound_capability_without_invoke_permission(api_context, records)
+    add_secret(
+        api_context, records, owner_type="user", owner_id=records.user_id, value="user-token"
+    )
+
+    response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.write",
+        headers={
+            **authorization_headers("grt_agent_runtime"),
+            "X-Request-Id": "req_missing_invoke_permission",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "capability_denied"
+    assert api_context.adapter.calls == []
+
+    with api_context.database.session_factory() as session:
+        audit_event = session.scalar(
+            select(AuditEvent).where(AuditEvent.request_id == "req_missing_invoke_permission")
+        )
+        usage_event = session.scalar(
+            select(UsageEvent).where(UsageEvent.capability_id == "mock.phonebook.write")
+        )
+
+    assert audit_event is not None
+    assert audit_event.decision == "deny"
+    assert audit_event.error_code == "capability_denied"
+    assert usage_event is not None
+    assert usage_event.status == "denied"
+
+
+def test_disabled_user_is_hidden_denied_and_recorded(api_context: APIContext) -> None:
+    records = add_runtime_records(api_context)
+    set_user_status(api_context, records, "disabled")
+    add_secret(
+        api_context, records, owner_type="user", owner_id=records.user_id, value="user-token"
+    )
+
+    discovery_response = api_context.client.get(
+        "/v1/capabilities?user=alice",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+    openapi_response = api_context.client.get(
+        "/v1/capabilities/openapi.json?user=alice",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+    tools_response = api_context.client.get(
+        "/v1/mcp/tools?user=alice",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+    invoke_response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.search",
+        headers={
+            **authorization_headers("grt_agent_runtime"),
+            "X-Request-Id": "req_disabled_user",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+
+    assert discovery_response.status_code == 200
+    assert discovery_response.json()["capabilities"] == []
+    assert openapi_response.status_code == 200
+    assert openapi_response.json()["paths"] == {}
+    assert tools_response.status_code == 200
+    assert tools_response.json() == {"tools": []}
+    assert invoke_response.status_code == 403
+    assert invoke_response.json()["error"]["code"] == "capability_denied"
+    assert api_context.adapter.calls == []
+
+    with api_context.database.session_factory() as session:
+        audit_event = session.scalar(
+            select(AuditEvent).where(AuditEvent.request_id == "req_disabled_user")
+        )
+        usage_event = session.scalar(
+            select(UsageEvent).where(UsageEvent.capability_id == records.capability_id)
+        )
+
+    assert audit_event is not None
+    assert audit_event.decision == "deny"
+    assert audit_event.user_id == records.user_id
+    assert usage_event is not None
+    assert usage_event.status == "denied"
+    assert usage_event.user_id == records.user_id
+
+
+def test_disabled_binding_is_hidden_denied_and_recorded(api_context: APIContext) -> None:
+    records = add_runtime_records(api_context)
+    set_binding_status(api_context, records, "disabled")
+    add_secret(
+        api_context, records, owner_type="user", owner_id=records.user_id, value="user-token"
+    )
+
+    discovery_response = api_context.client.get(
+        "/v1/capabilities?user=alice",
+        headers=authorization_headers("grt_agent_runtime"),
+    )
+    invoke_response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.search",
+        headers={
+            **authorization_headers("grt_agent_runtime"),
+            "X-Request-Id": "req_disabled_binding",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+
+    assert discovery_response.status_code == 200
+    assert discovery_response.json()["capabilities"] == []
+    assert invoke_response.status_code == 403
+    assert invoke_response.json()["error"]["code"] == "capability_denied"
+    assert api_context.adapter.calls == []
+
+    with api_context.database.session_factory() as session:
+        audit_event = session.scalar(
+            select(AuditEvent).where(AuditEvent.request_id == "req_disabled_binding")
+        )
+        usage_event = session.scalar(
+            select(UsageEvent).where(UsageEvent.capability_id == records.capability_id)
+        )
+
+    assert audit_event is not None
+    assert audit_event.decision == "deny"
+    assert audit_event.error_code == "capability_denied"
+    assert usage_event is not None
+    assert usage_event.status == "denied"
+
+
 def test_disabled_capability_is_denied_and_audited(api_context: APIContext) -> None:
     records = add_runtime_records(api_context, capability_status="disabled")
     add_secret(
@@ -1415,3 +1593,38 @@ def add_unreadable_secret(api_context: APIContext, records: RuntimeRecords) -> U
         session.add(secret)
         session.commit()
         return secret.id
+
+
+def remove_role_permission(
+    api_context: APIContext,
+    records: RuntimeRecords,
+    permission_code: str,
+) -> None:
+    with api_context.database.session_factory() as session:
+        role_permission = session.get(RolePermission, (records.role_id, permission_code))
+        assert role_permission is not None
+        session.delete(role_permission)
+        session.commit()
+
+
+def set_user_status(api_context: APIContext, records: RuntimeRecords, status: str) -> None:
+    with api_context.database.session_factory() as session:
+        user = session.get(User, records.user_id)
+        assert user is not None
+        user.status = status
+        session.commit()
+
+
+def set_binding_status(api_context: APIContext, records: RuntimeRecords, status: str) -> None:
+    with api_context.database.session_factory() as session:
+        binding = session.scalar(
+            select(Binding).where(
+                Binding.workspace_id == records.workspace_id,
+                Binding.agent_id == records.agent_id,
+                Binding.user_id == records.user_id,
+                Binding.capability_id == records.capability_id,
+            )
+        )
+        assert binding is not None
+        binding.status = status
+        session.commit()

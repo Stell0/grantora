@@ -143,6 +143,27 @@ def test_runtime_agent_authentication_and_me_response(api_context: APIContext) -
     assert "hash" not in valid_response.text
 
 
+def test_disabled_workspace_denies_runtime_agent_authentication(
+    api_context: APIContext,
+) -> None:
+    workspace_id = add_workspace(api_context, slug="disabled-runtime-acme", status="disabled")
+    add_agent(api_context, workspace_id, "active-agent", "grt_agent_disabled_workspace")
+
+    me_response = api_context.client.get(
+        "/v1/me",
+        headers=authorization_headers("grt_agent_disabled_workspace"),
+    )
+    capabilities_response = api_context.client.get(
+        "/v1/capabilities?user=alice",
+        headers=authorization_headers("grt_agent_disabled_workspace"),
+    )
+
+    assert me_response.status_code == 401
+    assert me_response.json()["error"]["code"] == "agent_auth_invalid"
+    assert capabilities_response.status_code == 401
+    assert capabilities_response.json()["error"]["code"] == "agent_auth_invalid"
+
+
 def test_agent_token_cannot_access_admin_endpoints(api_context: APIContext) -> None:
     workspace_id = add_workspace(api_context, slug="agent-admin-denied")
     add_agent(api_context, workspace_id, "runtime-agent", "grt_agent_runtime")
@@ -260,9 +281,9 @@ def authorization_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def add_workspace(api_context: APIContext, slug: str) -> UUID:
+def add_workspace(api_context: APIContext, slug: str, status: str = "active") -> UUID:
     with api_context.database.session_factory() as session:
-        workspace = Workspace(slug=slug, display_name=f"{slug} Workspace")
+        workspace = Workspace(slug=slug, display_name=f"{slug} Workspace", status=status)
         session.add(workspace)
         session.commit()
         return workspace.id

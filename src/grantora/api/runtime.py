@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 from time import perf_counter
 from typing import Any
@@ -33,7 +34,7 @@ from grantora.db.models import ACTIVE_STATUS, Agent, Capability, UsageEvent, Use
 from grantora.db.queries import (
     get_active_binding,
     get_active_capability_by_id,
-    get_active_user_by_external_id,
+    get_user_by_external_id,
     list_active_capabilities_for_agent_user,
     role_grants_permission,
 )
@@ -68,6 +69,17 @@ CAPABILITY_DENIED_MESSAGE = "Capability is not allowed for this agent and user"
 LOGGER = logging.getLogger("grantora.runtime")
 
 
+@dataclass(frozen=True)
+class RuntimeUserSelection:
+    user: User | None
+
+    @property
+    def active_user(self) -> User | None:
+        if self.user is None or self.user.status != ACTIVE_STATUS:
+            return None
+        return self.user
+
+
 @router.get("/me", response_model=MeResponse)
 def get_me(agent: AuthenticatedAgent) -> MeResponse:
     return MeResponse(
@@ -84,7 +96,7 @@ def list_capabilities(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> CapabilityListResponse:
-    selected_user = get_active_user_by_external_id(session, agent.workspace_id, user)
+    selected_user = _select_runtime_user(session, agent, user).active_user
     if selected_user is None:
         return CapabilityListResponse(capabilities=[], limit=limit, offset=offset)
 
@@ -113,7 +125,7 @@ def get_capability_openapi(
     session: DatabaseSession,
     user: str = Query(min_length=1),
 ) -> dict[str, Any]:
-    selected_user = get_active_user_by_external_id(session, agent.workspace_id, user)
+    selected_user = _select_runtime_user(session, agent, user).active_user
     if selected_user is None:
         return build_capability_openapi(
             [],
@@ -134,7 +146,7 @@ def list_mcp_tools(
     session: DatabaseSession,
     user: str = Query(min_length=1),
 ) -> dict[str, Any]:
-    selected_user = get_active_user_by_external_id(session, agent.workspace_id, user)
+    selected_user = _select_runtime_user(session, agent, user).active_user
     if selected_user is None:
         return build_mcp_tool_list([])
 
@@ -150,7 +162,8 @@ async def call_mcp_tool(
 ) -> MCPToolCallResponse:
     started_at = perf_counter()
     request_id = get_request_id(request)
-    selected_user = get_active_user_by_external_id(session, agent.workspace_id, payload.user)
+    user_selection = _select_runtime_user(session, agent, payload.user)
+    selected_user = user_selection.active_user
     if selected_user is None:
         _record_and_raise_invocation_error(
             session,
@@ -158,7 +171,7 @@ async def call_mcp_tool(
             started_at,
             request_id=request_id,
             agent=agent,
-            user=None,
+            user=user_selection.user,
             capability=None,
             capability_id=payload.name,
             decision="deny",
@@ -286,7 +299,8 @@ async def _invoke_capability_by_id(
 ) -> CapabilityInvokeResponse:
     started_at = perf_counter()
     request_id = get_request_id(request)
-    selected_user = get_active_user_by_external_id(session, agent.workspace_id, payload.user)
+    user_selection = _select_runtime_user(session, agent, payload.user)
+    selected_user = user_selection.active_user
     if selected_user is None:
         _record_and_raise_invocation_error(
             session,
@@ -294,7 +308,7 @@ async def _invoke_capability_by_id(
             started_at,
             request_id=request_id,
             agent=agent,
-            user=None,
+            user=user_selection.user,
             capability=None,
             capability_id=capability_id,
             decision="deny",
@@ -333,6 +347,7 @@ async def _invoke_capability_by_id(
     if (
         binding is None
         or permission_code is None
+        or not role_grants_permission(session, binding.role_id, DESCRIBE_PERMISSION)
         or not role_grants_permission(
             session,
             binding.role_id,
@@ -525,6 +540,12 @@ def _get_adapter_registry(request: Request) -> AdapterRegistry:
     if isinstance(adapter_registry, AdapterRegistry):
         return adapter_registry
     return AdapterRegistry()
+
+
+def _select_runtime_user(session: Session, agent: Agent, external_id: str) -> RuntimeUserSelection:
+    return RuntimeUserSelection(
+        user=get_user_by_external_id(session, agent.workspace_id, external_id)
+    )
 
 
 def _get_mcp_capability_by_tool_name(
