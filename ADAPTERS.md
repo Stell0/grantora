@@ -117,6 +117,18 @@ Adapters may reject incompatible secret types but must not fall back to hard-cod
 - Do not log authorization headers, tokens, cookies, decrypted secrets or raw upstream response bodies.
 - Do not log contact payloads, file contents or message bodies by default.
 
+## Adapter Extension Rules
+
+- Start from a curated capability contract. Do not add raw upstream method, path, URL, header or body passthrough unless the public contracts and security model explicitly change first.
+- Let the invocation engine perform authorization, input schema validation and secret resolution. Adapters must receive `SecretMaterial`; they must not query the database, choose a different secret or fall back to hard-coded credentials.
+- Inject credentials only into provider requests inside the adapter or another controlled broker layer. Never include credentials in `data`, `safe_metadata`, exceptions, logs, metrics or health responses.
+- Enforce configured upstream request timeout, connect timeout, TLS verification and maximum response size before parsing provider payloads.
+- Use bounded read-only retry behavior for idempotent capabilities only. Draft, side-effecting, destructive and admin-risk capabilities must not retry by default.
+- Normalize successful provider responses into the capability output schema and drop upstream-only fields by default.
+- Map provider and transport failures to safe `AdapterResult.error(...)` values. Do not expose raw upstream response bodies, stack traces, internal URLs or credential material in `safe_message`.
+- Keep health checks credential-free unless a future contract says otherwise, and return only safe reachability status.
+- Tests must use mock transports or mock upstream services only. No adapter test may contact a real business service.
+
 ## Adding A New Adapter
 
 1. Add the provider and capability contract to [CONTRACTS.md](CONTRACTS.md).

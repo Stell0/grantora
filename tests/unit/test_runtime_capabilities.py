@@ -911,6 +911,46 @@ def test_external_secret_reference_fails_closed_when_store_disabled(
     assert api_context.adapter.calls == []
 
 
+def test_unsupported_runtime_auth_mode_fails_closed_before_adapter(
+    api_context: APIContext,
+) -> None:
+    records = add_runtime_records(api_context)
+    set_capability_auth_mode(api_context, records, "admin")
+    add_secret(
+        api_context, records, owner_type="user", owner_id=records.user_id, value="user-token"
+    )
+
+    response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.search",
+        headers={
+            **authorization_headers("grt_agent_runtime"),
+            "X-Request-Id": "req_auth_mode_closed",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+
+    assert response.status_code == 424
+    assert response.json()["error"] == {
+        "code": "capability_denied",
+        "message": "Capability is not allowed for runtime invocation",
+    }
+    assert api_context.adapter.calls == []
+
+    with api_context.database.session_factory() as session:
+        audit_event = session.scalar(
+            select(AuditEvent).where(AuditEvent.request_id == "req_auth_mode_closed")
+        )
+        usage_event = session.scalar(
+            select(UsageEvent).where(UsageEvent.capability_id == records.capability_id)
+        )
+
+    assert audit_event is not None
+    assert audit_event.decision == "deny"
+    assert audit_event.error_code == "capability_denied"
+    assert usage_event is not None
+    assert usage_event.status == "denied"
+
+
 def test_revoked_secret_is_not_selected_for_invocation(api_context: APIContext) -> None:
     records = add_runtime_records(api_context)
     add_secret(
@@ -1018,6 +1058,54 @@ def test_adapter_error_is_returned_safely_and_records_error_usage(
     assert audit_event.decision == "allow"
     assert audit_event.outcome == "error"
     assert audit_event.error_code == "upstream_timeout"
+    assert usage_event is not None
+    assert usage_event.status == "error"
+
+
+def test_invalid_adapter_output_is_returned_safely_and_not_leaked(
+    api_context: APIContext,
+) -> None:
+    records = add_runtime_records(api_context)
+    add_secret(
+        api_context,
+        records,
+        owner_type="user",
+        owner_id=records.user_id,
+        value="upstream-user-token",
+    )
+    api_context.adapter.next_result = AdapterResult.ok(
+        {"contacts": [], "secret": "upstream-user-token"},
+        upstream_status=200,
+    )
+
+    response = api_context.client.post(
+        "/v1/invoke/mock.phonebook.search",
+        headers={
+            **authorization_headers("grt_agent_runtime"),
+            "X-Request-Id": "req_adapter_invalid_output",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["error"] == {
+        "code": "adapter_invalid_response",
+        "message": "Capability adapter returned invalid data",
+    }
+    assert "upstream-user-token" not in response.text
+
+    with api_context.database.session_factory() as session:
+        audit_event = session.scalar(
+            select(AuditEvent).where(AuditEvent.request_id == "req_adapter_invalid_output")
+        )
+        usage_event = session.scalar(
+            select(UsageEvent).where(UsageEvent.capability_id == records.capability_id)
+        )
+
+    assert audit_event is not None
+    assert audit_event.decision == "allow"
+    assert audit_event.outcome == "error"
+    assert audit_event.error_code == "adapter_invalid_response"
     assert usage_event is not None
     assert usage_event.status == "error"
 
@@ -1707,4 +1795,16 @@ def set_binding_status(api_context: APIContext, records: RuntimeRecords, status:
         )
         assert binding is not None
         binding.status = status
+        session.commit()
+
+
+def set_capability_auth_mode(
+    api_context: APIContext,
+    records: RuntimeRecords,
+    auth_mode: str,
+) -> None:
+    with api_context.database.session_factory() as session:
+        capability = session.get(Capability, records.capability_id)
+        assert capability is not None
+        capability.auth_mode = auth_mode
         session.commit()

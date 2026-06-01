@@ -258,6 +258,28 @@ async def test_nethvoice_phonebook_adapter_maps_timeout() -> None:
 
 
 @pytest.mark.asyncio
+async def test_nethvoice_adapter_rejects_unsupported_secret_before_call() -> None:
+    seen_requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        return httpx.Response(200, json={"contacts": []})
+
+    adapter = NethVoicePhonebookAdapter(transport=httpx.MockTransport(handler))
+
+    result = await adapter.invoke(
+        capability_stub(),
+        {"query": "Mario"},
+        invocation_context(),
+        SecretMaterial(secret_type="basic_auth", value="alice:password"),
+    )
+
+    assert result.status == "error"
+    assert result.error_code == "secret_type_unsupported"
+    assert seen_requests == []
+
+
+@pytest.mark.asyncio
 async def test_nethvoice_phonebook_adapter_rejects_oversized_upstream_payload() -> None:
     adapter = NethVoicePhonebookAdapter(
         max_response_bytes=32,
@@ -340,7 +362,8 @@ async def test_nethvoice_read_only_retry_is_bounded() -> None:
 
 
 @pytest.mark.asyncio
-async def test_side_effect_capability_is_not_retried_by_default() -> None:
+@pytest.mark.parametrize("risk_class", ["draft", "side_effect", "destructive", "admin"])
+async def test_non_read_only_capability_is_not_retried_by_default(risk_class: str) -> None:
     seen_requests = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -353,7 +376,7 @@ async def test_side_effect_capability_is_not_retried_by_default() -> None:
     )
 
     result = await adapter.invoke(
-        capability_stub(risk_class="side_effect"),
+        capability_stub(risk_class=risk_class),
         {"query": "Mario"},
         invocation_context(),
         SecretMaterial(secret_type="bearer_token", value="nethvoice-token"),
@@ -537,6 +560,28 @@ async def test_nextcloud_files_adapter_maps_timeout() -> None:
     assert result.error_code == "upstream_timeout"
     assert result.upstream_status is None
     assert result.retryable is True
+
+
+@pytest.mark.asyncio
+async def test_nextcloud_adapter_rejects_unsupported_secret_before_call() -> None:
+    seen_requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        return httpx.Response(200, json={"files": []})
+
+    adapter = NextcloudFilesAdapter(transport=httpx.MockTransport(handler))
+
+    result = await adapter.invoke(
+        nextcloud_capability_stub(),
+        {"query": "report"},
+        invocation_context(provider_type="nextcloud", operation="files.search"),
+        SecretMaterial(secret_type="api_key", value="nextcloud-api-key"),
+    )
+
+    assert result.status == "error"
+    assert result.error_code == "secret_type_unsupported"
+    assert seen_requests == []
 
 
 @pytest.mark.asyncio

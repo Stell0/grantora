@@ -198,14 +198,14 @@ Goal: make capability execution safe, observable and extensible.
 
 Tasks:
 
-- [ ] Verify invocation validates request input against capability schema.
-- [ ] Verify secret resolution is fail-closed.
-- [ ] Verify secrets are decrypted only in memory during invocation.
-- [ ] Verify upstream credentials are injected only by adapters or controlled broker code.
-- [ ] Verify upstream timeouts and response-size limits.
-- [ ] Verify upstream errors normalize to safe Grantora error codes.
-- [ ] Verify read-only retry policy is bounded and never applies to side-effe   cting/destructive capabilities by default.
-- [ ] Document adapter extension rules.
+- [x] Verify invocation validates request input against capability schema.
+- [x] Verify secret resolution is fail-closed.
+- [x] Verify secrets are decrypted only in memory during invocation.
+- [x] Verify upstream credentials are injected only by adapters or controlled broker code.
+- [x] Verify upstream timeouts and response-size limits.
+- [x] Verify upstream errors normalize to safe Grantora error codes.
+- [x] Verify read-only retry policy is bounded and never applies to side-effecting/destructive capabilities by default.
+- [x] Document adapter extension rules.
 
 
 Tests:
