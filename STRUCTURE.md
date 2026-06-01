@@ -39,7 +39,7 @@ grantora/
     ns8-packaging.md
 ```
 
-Only the documentation and compose files are present at project start. The remaining paths are created as their milestones are implemented.
+This layout describes the current implemented pre-release standalone core. Keep it aligned with code, compose files, workflows and operational documentation.
 
 ## Runtime Components
 
@@ -82,7 +82,7 @@ src/grantora/
 ## Database Ownership
 
 - SQLAlchemy models live in `src/grantora/db/models/` or a clearly equivalent package under `src/grantora/db/`.
-- During development, database schema changes are made directly in SQLAlchemy models and created with `Base.metadata.create_all()` on fresh disposable state.
+- During pre-release development, database schema changes are made directly in SQLAlchemy models and created with `Base.metadata.create_all()` on fresh disposable state.
 - Database schema changes must update [CONTRACTS.md](CONTRACTS.md) before or with implementation.
 - PostgreSQL owns dynamic state; APISIX and adapters must be treated as generated or external runtime state.
 
@@ -100,10 +100,33 @@ PostgreSQL desired route state
   -> Grantora APISIX reconciler
   -> APISIX Admin API
   -> APISIX runtime config in etcd
-  -> inbound requests routed to grantora-api
+  -> inbound runtime requests routed to grantora-api
 ```
 
+Generated APISIX runtime routes are intentionally narrow and public-runtime-only. Admin APIs, health endpoints, metrics and framework documentation are not generated public APISIX runtime routes unless an external deployment layer explicitly exposes them.
+
 APISIX must not become the business authorization engine. Grantora API performs final authentication, delegation checks, capability authorization, secret lookup, audit and usage writes.
+
+## Deployment Boundary
+
+Grantora owns application behavior:
+
+- runtime/admin API behavior
+- capability authorization
+- adapter execution
+- secret brokerage
+- audit and usage records
+- generated APISIX runtime route state
+
+The deployment system owns edge exposure and host/platform controls:
+
+- TLS profile and certificate lifecycle
+- IP allowlists or mTLS for admin/operator paths
+- explicit public/private route exposure matrix
+- host firewall and network-zone policy
+- operator-only access to direct Grantora API, APISIX Admin API, PostgreSQL, health and metrics
+
+For NS8 packaging, those controls belong to the NS8 module/system integration layer. Do not hard-code NS8-specific routing, certificate or firewall behavior into the standalone upstream application.
 
 ## Test Layout
 
