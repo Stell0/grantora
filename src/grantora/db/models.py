@@ -461,10 +461,10 @@ class AuditEvent(Base):
     timestamp: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now, nullable=False)
     request_id: Mapped[str] = mapped_column(String(128), nullable=False)
     actor_type: Mapped[str] = mapped_column(String(32), default="agent", nullable=False)
-    workspace_id: Mapped[UUID] = mapped_column(
+    workspace_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("workspaces.id"),
-        nullable=False,
+        nullable=True,
     )
     agent_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("agents.id"))
     user_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"))

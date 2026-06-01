@@ -264,18 +264,22 @@ Required endpoints:
 
 - `POST /v1/admin/workspaces`
 - `GET /v1/admin/workspaces`
+- `PATCH /v1/admin/workspaces/{workspace_id}`
 - `POST /v1/admin/applications`
 - `GET /v1/admin/applications`
+- `PATCH /v1/admin/applications/{application_id}`
 - `POST /v1/admin/users`
 - `GET /v1/admin/users`
 - `POST /v1/admin/capabilities`
 - `GET /v1/admin/capabilities`
 - `POST /v1/admin/roles`
 - `GET /v1/admin/roles`
+- `PATCH /v1/admin/roles/{role_id}`
 - `POST /v1/admin/permissions`
 - `GET /v1/admin/permissions`
 - `POST /v1/admin/agents`
 - `GET /v1/admin/agents`
+- `POST /v1/admin/agents/{agent_id}/rotate-token`
 - `PATCH /v1/admin/agents/{agent_id}`
 - `POST /v1/admin/bindings`
 - `GET /v1/admin/bindings`
@@ -289,7 +293,7 @@ Required endpoints:
 - `POST /v1/admin/apisix/sync`
 - `GET /v1/admin/apisix/status`
 
-Admin `POST` endpoints must validate workspace ownership and write audit records for security-relevant changes.
+Admin write endpoints must validate workspace ownership when a resource belongs to a workspace and write safe audit records for security-relevant changes. Global admin writes, such as permission creation, write audit records with `workspace_id=null`.
 
 Admin list endpoints that expose stateful resources use `include_disabled=false` by default. When supported, `include_disabled=true` also returns disabled or revoked rows for operator inspection.
 
@@ -335,6 +339,24 @@ Optional query parameters:
 - `include_disabled`: include disabled workspaces when true.
 - `limit`, `offset`: bounded pagination.
 
+### PATCH /v1/admin/workspaces/{workspace_id}
+
+Updates a workspace lifecycle status.
+
+Request body:
+
+```json
+{
+  "status": "disabled"
+}
+```
+
+Rules:
+
+- Valid statuses are `active` and `disabled`.
+- Disabled workspaces are hidden from default admin lists and are not valid parents for new dynamic objects.
+- The update writes a safe admin audit record.
+
 ### POST /v1/admin/applications
 
 Creates an application instance in an active workspace.
@@ -370,6 +392,25 @@ Optional query parameters:
 - `workspace_id`: filter to one workspace.
 - `include_disabled`: include disabled application instances when true.
 - `limit`, `offset`: bounded pagination.
+
+### PATCH /v1/admin/applications/{application_id}
+
+Updates an application instance lifecycle status.
+
+Request body:
+
+```json
+{
+  "status": "disabled"
+}
+```
+
+Rules:
+
+- Valid statuses are `active` and `disabled`.
+- Re-activating an application requires its workspace to be active.
+- Disabled applications are hidden from default admin lists and their capabilities cannot be discovered or invoked.
+- The update writes a safe admin audit record.
 
 ### POST /v1/admin/users
 
@@ -528,6 +569,7 @@ Rules:
 
 - Permission codes are globally unique.
 - Built-in permission codes are `capability.describe`, `capability.invoke.read_only`, `capability.invoke.side_effect` and `capability.invoke.destructive`.
+- The write requires a super-admin principal and writes a safe global admin audit record with `workspace_id=null`.
 
 ### GET /v1/admin/permissions
 
@@ -577,6 +619,25 @@ Optional query parameters:
 - `workspace_id`: filter to one workspace.
 - `include_disabled`: include disabled roles when true.
 - `limit`, `offset`: bounded pagination.
+
+### PATCH /v1/admin/roles/{role_id}
+
+Updates a role lifecycle status.
+
+Request body:
+
+```json
+{
+  "status": "disabled"
+}
+```
+
+Rules:
+
+- Valid statuses are `active` and `disabled`.
+- Re-activating a role requires its workspace to be active.
+- Disabled roles deny runtime discovery and invocation immediately.
+- The update writes a safe admin audit record.
 
 ### POST /v1/admin/bindings
 
@@ -792,6 +853,32 @@ Optional query parameters:
 - `workspace_id`: filter agents to one workspace.
 - `include_disabled`: include disabled agents when true.
 - `limit`, `offset`: bounded pagination.
+
+### POST /v1/admin/agents/{agent_id}/rotate-token
+
+Rotates an agent bearer token and returns the new plaintext token exactly once.
+
+Success response uses the same shape as `POST /v1/admin/agents`:
+
+```json
+{
+  "agent": {
+    "id": "uuid",
+    "workspace_id": "uuid",
+    "slug": "hermes-alice",
+    "display_name": "Hermes Alice",
+    "status": "active"
+  },
+  "token": "grt_agent_..."
+}
+```
+
+Rules:
+
+- Store only the replacement `token_hash` and `token_hash_algorithm` on the existing agent record.
+- The old plaintext token fails runtime authentication after the rotation commits.
+- The response must not include `token_hash` or `token_hash_algorithm`.
+- The update writes a safe admin audit record.
 
 ### PATCH /v1/admin/agents/{agent_id}
 
@@ -1104,7 +1191,7 @@ id: uuid
 timestamp: datetime
 request_id: string
 actor_type: agent | admin_bootstrap | admin_token | admin_oidc
-workspace_id: uuid
+workspace_id: uuid | null
 agent_id: uuid | null
 user_id: uuid | null
 capability_id: string | null
@@ -1117,7 +1204,7 @@ remote_addr: string | null
 ```
 
 Denied requests must be audited even when no adapter is invoked.
-Admin mutations use `actor_type` for the authenticated admin principal; runtime agent activity uses `actor_type: agent`.
+Admin mutations use `actor_type` for the authenticated admin principal; runtime agent activity uses `actor_type: agent`. Global admin mutations that are not scoped to one workspace use `workspace_id=null`.
 
 ## Usage Event Contract
 

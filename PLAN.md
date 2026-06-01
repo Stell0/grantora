@@ -136,16 +136,16 @@ Goal: make all dynamic state configurable through supported APIs.
 
 Tasks:
 
-- [ ] Verify CRUD/status APIs for workspaces.
-- [ ] Verify CRUD/status APIs for application instances.
-- [ ] Verify CRUD/status APIs for users.
-- [ ] Verify CRUD/status APIs for agents and agent tokens.
-- [ ] Verify CRUD/status APIs for capabilities.
-- [ ] Verify CRUD/status APIs for permissions, roles and bindings.
-- [ ] Verify create/list/rotate/revoke APIs for secrets.
-- [ ] Verify audit and usage query APIs with filters and pagination.
-- [ ] Verify APISIX sync/status APIs.
-- [ ] Ensure all write APIs produce safe audit records.
+- [x] Verify CRUD/status APIs for workspaces.
+- [x] Verify CRUD/status APIs for application instances.
+- [x] Verify CRUD/status APIs for users.
+- [x] Verify CRUD/status APIs for agents and agent tokens.
+- [x] Verify CRUD/status APIs for capabilities.
+- [x] Verify CRUD/status APIs for permissions, roles and bindings.
+- [x] Verify create/list/rotate/revoke APIs for secrets.
+- [x] Verify audit and usage query APIs with filters and pagination.
+- [x] Verify APISIX sync/status APIs.
+- [x] Ensure all write APIs produce safe audit records.
 - [ ] Commit changes
 
 Tests:

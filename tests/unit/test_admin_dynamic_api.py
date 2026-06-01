@@ -536,6 +536,64 @@ def test_admin_lifecycle_updates_immediately_affect_runtime(
         f"/v1/admin/users/{records.user_id}",
         {"status": "active"},
     )
+    role_disabled = patch_admin(
+        api_context,
+        f"/v1/admin/roles/{records.role_id}",
+        {"status": "disabled"},
+        request_id="req_role_disabled",
+    )["role"]
+    role_capabilities = api_context.client.get(
+        "/v1/capabilities?user=alice",
+        headers=authorization_headers(records.agent_token),
+    )
+    role_denied = api_context.client.post(
+        f"/v1/invoke/{records.capability_id}",
+        headers={
+            **authorization_headers(records.agent_token),
+            "X-Request-Id": "req_role_disabled_invoke",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+
+    assert role_disabled["status"] == "disabled"
+    assert role_capabilities.json() == {"capabilities": [], "limit": 100, "offset": 0}
+    assert role_denied.status_code == 403
+    assert role_denied.json()["error"]["code"] == "capability_denied"
+
+    patch_admin(
+        api_context,
+        f"/v1/admin/roles/{records.role_id}",
+        {"status": "active"},
+    )
+    application_disabled = patch_admin(
+        api_context,
+        f"/v1/admin/applications/{records.application_id}",
+        {"status": "disabled"},
+        request_id="req_application_disabled",
+    )["application"]
+    application_capabilities = api_context.client.get(
+        "/v1/capabilities?user=alice",
+        headers=authorization_headers(records.agent_token),
+    )
+    application_denied = api_context.client.post(
+        f"/v1/invoke/{records.capability_id}",
+        headers={
+            **authorization_headers(records.agent_token),
+            "X-Request-Id": "req_application_disabled_invoke",
+        },
+        json={"user": "alice", "input": {"query": "Mario"}},
+    )
+
+    assert application_disabled["status"] == "disabled"
+    assert application_capabilities.json() == {"capabilities": [], "limit": 100, "offset": 0}
+    assert application_denied.status_code == 403
+    assert application_denied.json()["error"]["code"] == "capability_denied"
+
+    patch_admin(
+        api_context,
+        f"/v1/admin/applications/{records.application_id}",
+        {"status": "active"},
+    )
     secret_revoked = patch_admin(
         api_context,
         f"/v1/admin/secrets/{records.secret_id}",
@@ -590,6 +648,102 @@ def test_admin_lifecycle_updates_immediately_affect_runtime(
     assert audit_event.decision == "allow"
 
 
+def test_admin_status_updates_and_agent_token_rotation_are_audited(
+    api_context: APIContext,
+) -> None:
+    records = bootstrap_runtime_records(api_context)
+
+    rotated_agent = post_admin(
+        api_context,
+        f"/v1/admin/agents/{records.agent_id}/rotate-token",
+        {},
+        request_id="req_agent_token_rotate",
+    )
+    old_token_me = api_context.client.get(
+        "/v1/me",
+        headers=authorization_headers(records.agent_token),
+    )
+    new_token_me = api_context.client.get(
+        "/v1/me",
+        headers=authorization_headers(rotated_agent["token"]),
+    )
+    workspace_disabled = patch_admin(
+        api_context,
+        f"/v1/admin/workspaces/{records.workspace_id}",
+        {"status": "disabled"},
+        request_id="req_workspace_disable",
+    )["workspace"]
+    application_disabled = patch_admin(
+        api_context,
+        f"/v1/admin/applications/{records.application_id}",
+        {"status": "disabled"},
+        request_id="req_application_disable",
+    )["application"]
+    role_disabled = patch_admin(
+        api_context,
+        f"/v1/admin/roles/{records.role_id}",
+        {"status": "disabled"},
+        request_id="req_role_disable",
+    )["role"]
+
+    assert rotated_agent["agent"]["id"] == str(records.agent_id)
+    assert rotated_agent["token"] != records.agent_token
+    assert "token_hash" not in rotated_agent["agent"]
+    assert old_token_me.status_code == 401
+    assert old_token_me.json()["error"]["code"] == "agent_auth_invalid"
+    assert new_token_me.status_code == 200
+    assert new_token_me.json()["agent"]["id"] == str(records.agent_id)
+    assert workspace_disabled["status"] == "disabled"
+    assert application_disabled["status"] == "disabled"
+    assert role_disabled["status"] == "disabled"
+
+    default_workspaces = api_context.client.get(
+        "/v1/admin/workspaces",
+        headers=authorization_headers("admin-token"),
+    ).json()["workspaces"]
+    all_workspaces = api_context.client.get(
+        "/v1/admin/workspaces?include_disabled=true",
+        headers=authorization_headers("admin-token"),
+    ).json()["workspaces"]
+    default_applications = api_context.client.get(
+        f"/v1/admin/applications?workspace_id={records.workspace_id}",
+        headers=authorization_headers("admin-token"),
+    ).json()["applications"]
+    all_applications = api_context.client.get(
+        f"/v1/admin/applications?workspace_id={records.workspace_id}&include_disabled=true",
+        headers=authorization_headers("admin-token"),
+    ).json()["applications"]
+    default_roles = api_context.client.get(
+        f"/v1/admin/roles?workspace_id={records.workspace_id}",
+        headers=authorization_headers("admin-token"),
+    ).json()["roles"]
+    all_roles = api_context.client.get(
+        f"/v1/admin/roles?workspace_id={records.workspace_id}&include_disabled=true",
+        headers=authorization_headers("admin-token"),
+    ).json()["roles"]
+
+    assert str(records.workspace_id) not in {workspace["id"] for workspace in default_workspaces}
+    assert str(records.workspace_id) in {workspace["id"] for workspace in all_workspaces}
+    assert str(records.application_id) not in {
+        application["id"] for application in default_applications
+    }
+    assert str(records.application_id) in {application["id"] for application in all_applications}
+    assert str(records.role_id) not in {role["id"] for role in default_roles}
+    assert str(records.role_id) in {role["id"] for role in all_roles}
+
+    audit_response = api_context.client.get(
+        f"/v1/admin/audit?workspace_id={records.workspace_id}&actor_type=admin_bootstrap&limit=500",
+        headers=authorization_headers("admin-token"),
+    )
+
+    assert {
+        "req_workspace_disable",
+        "req_application_disable",
+        "req_role_disable",
+        "req_agent_token_rotate",
+    }.issubset({event["request_id"] for event in audit_response.json()["audit"]})
+
+
 def test_default_permissions_seed_idempotently(api_context: APIContext) -> None:
     expected_codes = [
         "capability.describe",
@@ -612,6 +766,35 @@ def test_default_permissions_seed_idempotently(api_context: APIContext) -> None:
     first_codes = [permission["code"] for permission in first_response.json()["permissions"]]
     assert first_codes == expected_codes
     assert second_response.json() == first_response.json()
+
+
+def test_admin_permission_writes_are_audited(api_context: APIContext) -> None:
+    permission = post_admin(
+        api_context,
+        "/v1/admin/permissions",
+        {"code": "capability.invoke.audit_custom", "description": "Audit custom permission"},
+        request_id="req_permission_create",
+    )["permission"]
+    audit_response = api_context.client.get(
+        "/v1/admin/audit?actor_type=admin_bootstrap&limit=50",
+        headers=authorization_headers("admin-token"),
+    )
+
+    matching_events = [
+        event
+        for event in audit_response.json()["audit"]
+        if event["request_id"] == "req_permission_create"
+    ]
+
+    assert permission == {
+        "code": "capability.invoke.audit_custom",
+        "description": "Audit custom permission",
+    }
+    assert audit_response.status_code == 200
+    assert len(matching_events) == 1
+    assert matching_events[0]["workspace_id"] is None
+    assert matching_events[0]["actor_type"] == "admin_bootstrap"
+    assert matching_events[0]["decision"] == "allow"
 
 
 def test_admin_rejects_malformed_security_sensitive_inputs(api_context: APIContext) -> None:

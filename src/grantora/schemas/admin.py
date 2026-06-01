@@ -333,7 +333,7 @@ class AuditEventAdminSummary(BaseModel):
     timestamp: datetime
     request_id: str
     actor_type: str
-    workspace_id: UUID
+    workspace_id: UUID | None
     agent_id: UUID | None
     user_id: UUID | None
     capability_id: str | None

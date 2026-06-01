@@ -166,6 +166,22 @@ def list_workspaces(
     )
 
 
+@router.patch("/workspaces/{workspace_id}", response_model=AdminWorkspaceResponse)
+def update_workspace_status(
+    workspace_id: UUID,
+    payload: AdminLifecycleStatusUpdateRequest,
+    request: Request,
+    _admin: AdminBootstrap,
+    session: DatabaseSession,
+) -> AdminWorkspaceResponse:
+    _require_admin_workspace(_admin, workspace_id)
+    workspace = _get_workspace_or_404(session, workspace_id)
+    workspace.status = payload.status
+    _record_admin_audit_event(session, request, workspace_id=workspace.id)
+    _commit_or_conflict(session, "workspace_conflict", "Workspace could not be updated")
+    return AdminWorkspaceResponse(workspace=WorkspaceAdminSummary.model_validate(workspace))
+
+
 @router.post(
     "/applications",
     status_code=status.HTTP_201_CREATED,
@@ -222,6 +238,29 @@ def list_applications(
         limit=limit,
         offset=offset,
     )
+
+
+@router.patch("/applications/{application_id}", response_model=AdminApplicationResponse)
+def update_application_status(
+    application_id: UUID,
+    payload: AdminLifecycleStatusUpdateRequest,
+    request: Request,
+    _admin: AdminBootstrap,
+    session: DatabaseSession,
+) -> AdminApplicationResponse:
+    application = _get_application_or_404(session, application_id)
+    _require_admin_workspace(_admin, application.workspace_id)
+    if payload.status == ACTIVE_STATUS:
+        _get_active_workspace_or_404(session, application.workspace_id)
+    application.status = payload.status
+    _record_admin_audit_event(
+        session,
+        request,
+        workspace_id=application.workspace_id,
+        application_instance_id=application.id,
+    )
+    _commit_or_conflict(session, "application_conflict", "Application could not be updated")
+    return AdminApplicationResponse(application=ApplicationAdminSummary.model_validate(application))
 
 
 @router.post("/users", status_code=status.HTTP_201_CREATED, response_model=AdminUserResponse)
@@ -495,12 +534,14 @@ def update_capability_status(
 )
 def create_permission(
     payload: AdminPermissionCreateRequest,
+    request: Request,
     _admin: AdminBootstrap,
     session: DatabaseSession,
 ) -> AdminPermissionResponse:
     _require_super_admin(_admin)
     permission = Permission(code=payload.code, description=payload.description)
     session.add(permission)
+    _record_admin_audit_event(session, request, workspace_id=None)
     _commit_or_conflict(session, "permission_conflict", "Permission could not be created")
     return AdminPermissionResponse(permission=PermissionAdminSummary.model_validate(permission))
 
@@ -583,6 +624,24 @@ def list_roles(
         limit=limit,
         offset=offset,
     )
+
+
+@router.patch("/roles/{role_id}", response_model=AdminRoleResponse)
+def update_role_status(
+    role_id: UUID,
+    payload: AdminLifecycleStatusUpdateRequest,
+    request: Request,
+    _admin: AdminBootstrap,
+    session: DatabaseSession,
+) -> AdminRoleResponse:
+    role = _get_role_or_404(session, role_id)
+    _require_admin_workspace(_admin, role.workspace_id)
+    if payload.status == ACTIVE_STATUS:
+        _get_active_workspace_or_404(session, role.workspace_id)
+    role.status = payload.status
+    _record_admin_audit_event(session, request, workspace_id=role.workspace_id)
+    _commit_or_conflict(session, "role_conflict", "Role could not be updated")
+    return AdminRoleResponse(role=_role_summary(role))
 
 
 @router.post(
@@ -1007,6 +1066,26 @@ def list_agents(
     )
 
 
+@router.post("/agents/{agent_id}/rotate-token", response_model=AdminAgentCreateResponse)
+def rotate_agent_token(
+    agent_id: UUID,
+    request: Request,
+    _admin: AdminBootstrap,
+    session: DatabaseSession,
+) -> AdminAgentCreateResponse:
+    agent = _get_agent_or_404(session, agent_id)
+    _require_admin_workspace(_admin, agent.workspace_id)
+    plaintext_token = create_agent_token()
+    agent.token_hash = hash_token(plaintext_token, request.app.state.settings.agent_token_pepper)
+    agent.token_hash_algorithm = TOKEN_HASH_ALGORITHM
+    _record_admin_audit_event(session, request, workspace_id=agent.workspace_id, agent_id=agent.id)
+    _commit_or_conflict(session, "agent_conflict", "Agent token could not be rotated")
+    return AdminAgentCreateResponse(
+        agent=AgentAdminSummary.model_validate(agent),
+        token=plaintext_token,
+    )
+
+
 @router.patch("/agents/{agent_id}", response_model=AdminAgentResponse)
 def update_agent_status(
     agent_id: UUID,
@@ -1113,7 +1192,7 @@ def _record_admin_audit_event(
     session: Session,
     request: Request,
     *,
-    workspace_id: UUID,
+    workspace_id: UUID | None,
     agent_id: UUID | None = None,
     user_id: UUID | None = None,
     capability_id: str | None = None,
@@ -1136,6 +1215,17 @@ def _record_admin_audit_event(
     )
 
 
+def _get_workspace_or_404(session: Session, workspace_id: UUID) -> Workspace:
+    workspace = session.get(Workspace, workspace_id)
+    if workspace is None:
+        raise GrantoraAPIError(
+            status.HTTP_404_NOT_FOUND,
+            "workspace_not_found",
+            "Workspace was not found",
+        )
+    return workspace
+
+
 def _get_active_workspace_or_404(session: Session, workspace_id: UUID) -> Workspace:
     workspace = get_active_workspace_by_id(session, workspace_id)
     if workspace is None:
@@ -1145,6 +1235,20 @@ def _get_active_workspace_or_404(session: Session, workspace_id: UUID) -> Worksp
             "Workspace was not found",
         )
     return workspace
+
+
+def _get_application_or_404(
+    session: Session,
+    application_id: UUID,
+) -> ApplicationInstance:
+    application = session.get(ApplicationInstance, application_id)
+    if application is None:
+        raise GrantoraAPIError(
+            status.HTTP_404_NOT_FOUND,
+            "application_not_found",
+            "Application was not found",
+        )
+    return application
 
 
 def _get_active_application_or_404(
@@ -1236,6 +1340,17 @@ def _get_capability_or_404(session: Session, capability_id: str) -> Capability:
             "Capability was not found",
         )
     return capability
+
+
+def _get_role_or_404(session: Session, role_id: UUID) -> Role:
+    role = session.get(Role, role_id)
+    if role is None:
+        raise GrantoraAPIError(
+            status.HTTP_404_NOT_FOUND,
+            "role_not_found",
+            "Role was not found",
+        )
+    return role
 
 
 def _get_binding_or_404(session: Session, binding_id: UUID) -> Binding:
