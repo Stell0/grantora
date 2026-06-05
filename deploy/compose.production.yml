@@ -2,7 +2,7 @@ name: grantora-production
 
 services:
   grantora-api:
-    image: ${GRANTORA_IMAGE:-ghcr.io/grantora/grantora-api:${GRANTORA_VERSION:?set GRANTORA_VERSION}}
+    image: ${GRANTORA_IMAGE:-ghcr.io/stell0/grantora-api:${GRANTORA_VERSION:?set GRANTORA_VERSION}}
     restart: unless-stopped
     init: true
     depends_on:

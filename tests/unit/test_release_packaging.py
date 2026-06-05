@@ -72,7 +72,7 @@ def test_production_compose_uses_published_image_and_isolates_private_services()
     compose = (ROOT / "deploy" / "compose.production.yml").read_text(encoding="utf-8")
     env_example = (ROOT / "deploy" / "production.env.example").read_text(encoding="utf-8")
 
-    assert "image: ${GRANTORA_IMAGE:-ghcr.io/grantora/grantora-api" in compose
+    assert "image: ${GRANTORA_IMAGE:-ghcr.io/stell0/grantora-api" in compose
     assert "image: docker.io/library/postgres:16-alpine" in compose
     assert "image: docker.io/bitnamilegacy/etcd:3.5" in compose
     assert "image: docker.io/apache/apisix:3.10.0-debian" in compose
@@ -92,7 +92,7 @@ def test_production_compose_uses_published_image_and_isolates_private_services()
     assert "internal: true" in compose
     assert "grantora-egress:" in compose
 
-    assert "GRANTORA_IMAGE=ghcr.io/grantora/grantora-api:0.1.0" in env_example
+    assert "GRANTORA_IMAGE=ghcr.io/stell0/grantora-api:0.1.0" in env_example
     assert "POSTGRES_PASSWORD=replace-with-long-random-postgres-password" in env_example
     assert "SECRET_ENCRYPTION_KEY=replace-with-generated-fernet-key" in env_example
 

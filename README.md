@@ -128,7 +128,7 @@ Release security gates write artifacts under `dist/security/`: dependency audit 
 
 The `Tests` workflow runs `make lint`, `make format-check` and `make test-unit` on pull requests and pushes to `main`. Its PostgreSQL integration and compose-backed e2e jobs are manual `workflow_dispatch` options so infrastructure-heavy checks stay explicit.
 
-Release packaging uses versioned Grantora API container images. `make release-image` builds `ghcr.io/grantora/grantora-api:<version>` from `pyproject.toml`, and `make release-image-smoke` starts that image against a disposable SQLite database and checks that `/healthz` reports the same version. The tag-driven `Release Image` workflow performs the same clean image smoke before pushing versioned and SHA tags to GHCR.
+Release packaging uses versioned Grantora API container images. `make release-image` builds `ghcr.io/stell0/grantora-api:<version>` from `pyproject.toml`, and `make release-image-smoke` starts that image against a disposable SQLite database and checks that `/healthz` reports the same version. The tag-driven `Release Image` workflow performs the same clean image smoke before pushing versioned and SHA tags to GHCR.
 
 Production deployment examples live under [deploy/](deploy/), starting with [deploy/compose.production.yml](deploy/compose.production.yml). The production compose file publishes only APISIX and keeps PostgreSQL and the APISIX Admin API off host ports. See [docs/release.md](docs/release.md) for the release checklist and upgrade procedure, and [docs/ns8-packaging.md](docs/ns8-packaging.md) for future NS8 module boundaries.
 

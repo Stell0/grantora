@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import Session, sessionmaker
 
 from grantora.apisix import (
@@ -164,3 +164,25 @@ async def test_reconcile_deletes_stale_managed_routes_but_preserves_foreign_rout
     assert client.deletes == ["grantora-stale"]
     assert "grantora-stale" not in client.routes
     assert "foreign-route" in client.routes
+
+
+@pytest.mark.asyncio
+async def test_reconcile_backfills_missing_apisix_tables(session: Session) -> None:
+    settings = Settings(database_url="sqlite+pysqlite:///:memory:", environment="test")
+    client = RecordingApisixClient()
+
+    ApisixSyncStatus.__table__.drop(session.bind)
+    ApisixRoute.__table__.drop(session.bind)
+
+    inspector = inspect(session.bind)
+    assert ApisixRoute.__tablename__ not in inspector.get_table_names()
+    assert ApisixSyncStatus.__tablename__ not in inspector.get_table_names()
+
+    result = await reconcile_apisix_routes(session, settings, client)
+
+    inspector = inspect(session.bind)
+    assert result.status == "ok"
+    assert ApisixRoute.__tablename__ in inspector.get_table_names()
+    assert ApisixSyncStatus.__tablename__ in inspector.get_table_names()
+    assert session.get(ApisixRoute, "gateway-runtime") is not None
+    assert session.get(ApisixSyncStatus, "default") is not None

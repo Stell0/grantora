@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, Protocol
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
 from grantora.apisix.client import ApisixAdminAPIError
@@ -66,6 +66,7 @@ async def reconcile_apisix_routes(
 ) -> ApisixSyncResult:
     started_at = utc_now()
     metrics_started_at = now()
+    ensure_apisix_tables(session)
     ensure_default_runtime_route(session, settings)
     session.commit()
 
@@ -193,7 +194,22 @@ def ensure_default_runtime_route(session: Session, settings: Settings) -> Apisix
     return route
 
 
+def ensure_apisix_tables(session: Session) -> None:
+    bind = session.get_bind()
+    inspector = inspect(bind)
+    existing_tables = set(inspector.get_table_names())
+    missing_tables = []
+    if ApisixRoute.__tablename__ not in existing_tables:
+        missing_tables.append(ApisixRoute.__table__)
+    if ApisixSyncStatus.__tablename__ not in existing_tables:
+        missing_tables.append(ApisixSyncStatus.__table__)
+    if missing_tables:
+        for table in missing_tables:
+            table.create(bind=bind, checkfirst=True)
+
+
 def desired_apisix_routes(session: Session, settings: Settings) -> list[ApisixRoute]:
+    ensure_apisix_tables(session)
     routes = list(session.scalars(select(ApisixRoute).order_by(ApisixRoute.id)).all())
     if any(route.id == DEFAULT_RUNTIME_ROUTE_ID for route in routes):
         return routes
@@ -286,4 +302,5 @@ def record_apisix_sync_status(
 
 
 def get_apisix_sync_status(session: Session) -> ApisixSyncStatus | None:
+    ensure_apisix_tables(session)
     return session.get(ApisixSyncStatus, APISIX_SYNC_STATUS_ID)
