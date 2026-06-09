@@ -10,6 +10,7 @@ from grantora.adapters.base import (
     UserContext,
     WorkspaceContext,
 )
+from grantora.adapters.hubspot import HubSpotContactsAdapter
 from grantora.adapters.mock import MockAdapter
 from grantora.adapters.nethvoice import NethVoicePhonebookAdapter
 from grantora.adapters.nextcloud import NextcloudFilesAdapter
@@ -23,6 +24,7 @@ __all__ = [
     "AgentContext",
     "ApplicationContext",
     "CapabilityContext",
+    "HubSpotContactsAdapter",
     "MockAdapter",
     "HealthResult",
     "InvocationContext",

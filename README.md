@@ -120,7 +120,7 @@ Tracing is optional and disabled by default. Set `OTEL_TRACING_ENABLED=true`, ke
 
 `make backup-restore-smoke` exercises the documented PostgreSQL dump and restore path, then reruns APISIX sync and a demo invocation. The opt-in pytest equivalent is gated behind `GRANTORA_RUN_BACKUP_RESTORE_SMOKE=1` because it tears down local compose volumes.
 
-Supported real provider templates currently include `nethvoice.phonebook.search` and `nextcloud.files.search`. Admins can list templates with `GET /v1/admin/capability-templates` and create a capability with `POST /v1/admin/capabilities/from-template`.
+Supported real provider templates currently include `hubspot.contacts.search`, `nethvoice.phonebook.search` and `nextcloud.files.search`. Admins can list templates with `GET /v1/admin/capability-templates` and create a capability with `POST /v1/admin/capabilities/from-template`.
 
 Security hardening is enabled by default: request bodies are bounded by `MAX_REQUEST_BODY_BYTES`, application base URLs are constrained to safe origins, raw upstream passthrough capabilities are rejected, and admin tokens can be DB-backed and workspace-scoped. Optional OIDC/NS8 admin identity is disabled unless `FEATURE_OIDC=true`, the subject is allowlisted, and the request comes from `OIDC_TRUSTED_PROXY_CIDRS`.
 

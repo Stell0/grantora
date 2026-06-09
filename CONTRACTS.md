@@ -1119,6 +1119,75 @@ output_schema:
   additionalProperties: false
 ```
 
+Built-in template `hubspot.contacts.search` follows the same capability shape with these provider-specific fields:
+
+```yaml
+id: hubspot.contacts.search
+name: Search contacts
+version: 1
+provider_type: hubspot
+adapter: hubspot
+operation: contacts.search
+auth_mode: user
+risk_class: read_only
+input_schema:
+  type: object
+  properties:
+    query:
+      type: string
+      minLength: 1
+    limit:
+      type: integer
+      minimum: 1
+      maximum: 50
+  required:
+    - query
+  additionalProperties: false
+output_schema:
+  type: object
+  properties:
+    contacts:
+      type: array
+      items:
+        type: object
+        properties:
+          id:
+            type: string
+          display_name:
+            type: string
+          email:
+            type:
+              - string
+              - "null"
+          company:
+            type:
+              - string
+              - "null"
+          phone:
+            type:
+              - string
+              - "null"
+          job_title:
+            type:
+              - string
+              - "null"
+          source:
+            type: string
+            const: hubspot
+        required:
+          - id
+          - display_name
+          - email
+          - company
+          - phone
+          - job_title
+          - source
+        additionalProperties: false
+  required:
+    - contacts
+  additionalProperties: false
+```
+
 Valid `auth_mode` values: `system`, `user`, `user+scope`, `admin`.
 
 Valid `risk_class` values: `read_only`, `draft`, `side_effect`, `destructive`, `admin`.

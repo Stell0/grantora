@@ -44,6 +44,7 @@ Agents invoke stable capabilities such as:
 ```text
 nethvoice.phonebook.search
 nextcloud.files.search
+hubspot.contacts.search
 webtop.calendar.list
 mattermost.channel.post
 ```
@@ -66,7 +67,7 @@ Bootstrap, DB-backed and optional trusted-proxy OIDC admin authentication
 Deny-by-default capability authorization
 Secret encryption and active-secret resolution
 Audit and usage records for runtime attempts
-Mock, NethVoice phonebook and Nextcloud files adapters
+Mock, NethVoice phonebook, Nextcloud files and HubSpot contacts adapters
 APISIX route reconciliation from Grantora state
 Local compose stack
 Production compose example
@@ -477,6 +478,7 @@ MCP-compatible HTTP JSON tool surface
 mock adapter
 NethVoice phonebook adapter
 Nextcloud files adapter
+HubSpot contacts adapter
 local compose setup
 production compose example
 ```

@@ -325,6 +325,7 @@ Grantora ships built-in capability templates for common real adapters:
 
 - `nethvoice.phonebook.search`
 - `nextcloud.files.search`
+- `hubspot.contacts.search`
 
 List templates:
 
@@ -347,7 +348,7 @@ curl -sS -X POST http://localhost:8080/v1/admin/capabilities/from-template \
   }'
 ```
 
-Templates include JSON Schemas, adapter ids, required secret types and required upstream permissions. They never include provider base URLs, tokens or passwords.
+Templates include JSON Schemas, adapter ids, required secret types and required upstream permissions. They never include provider base URLs, tokens or passwords. For example, `hubspot.contacts.search` requires a `bearer_token` secret and advertises the upstream permission `crm.objects.contacts.read`.
 
 ## APISIX Bootstrap
 
