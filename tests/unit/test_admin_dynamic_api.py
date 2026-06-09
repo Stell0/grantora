@@ -979,10 +979,15 @@ def test_builtin_capability_templates_are_valid_safe_and_cover_common_providers(
     assert response.status_code == 200
     templates = response.json()["templates"]
     assert [template["id"] for template in templates] == [
+        "hubspot.contacts.search",
         "nethvoice.phonebook.search",
         "nextcloud.files.search",
     ]
-    assert {template["provider_type"] for template in templates} == {"nethvoice", "nextcloud"}
+    assert {template["provider_type"] for template in templates} == {
+        "hubspot",
+        "nethvoice",
+        "nextcloud",
+    }
     assert "base_url" not in response.text
     assert "secret_value" not in response.text.lower()
     assert "https://" not in response.text.lower()
@@ -1029,6 +1034,10 @@ def test_admin_can_instantiate_capability_from_template(api_context: APIContext)
         "/v1/admin/capability-templates?provider_type=nextcloud",
         headers=authorization_headers("admin-token"),
     )
+    hubspot_templates_response = api_context.client.get(
+        "/v1/admin/capability-templates?provider_type=hubspot",
+        headers=authorization_headers("admin-token"),
+    )
     unknown_template = api_context.client.post(
         "/v1/admin/capabilities/from-template",
         headers=authorization_headers("admin-token"),
@@ -1066,6 +1075,16 @@ def test_admin_can_instantiate_capability_from_template(api_context: APIContext)
     assert templates[0]["upstream_permissions"] == ["files:read", "search:read"]
     assert "base_url" not in templates[0]
     assert "https://cloud.example.test" not in templates_response.text
+
+    assert hubspot_templates_response.status_code == 200
+    hubspot_templates = hubspot_templates_response.json()["templates"]
+    assert [template["id"] for template in hubspot_templates] == ["hubspot.contacts.search"]
+    assert hubspot_templates[0]["required_secret_types"] == ["bearer_token"]
+    assert hubspot_templates[0]["upstream_permissions"] == ["crm.objects.contacts.read"]
+    assert hubspot_templates[0]["provider_type"] == "hubspot"
+    assert hubspot_templates[0]["adapter"] == "hubspot"
+    assert hubspot_templates[0]["operation"] == "contacts.search"
+
     assert unknown_template.status_code == 404
     assert unknown_template.json()["error"]["code"] == "capability_template_not_found"
     assert provider_mismatch.status_code == 422

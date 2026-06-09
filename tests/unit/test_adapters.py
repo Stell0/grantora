@@ -13,6 +13,7 @@ from grantora.adapters import (
     AgentContext,
     ApplicationContext,
     CapabilityContext,
+    HubSpotContactsAdapter,
     InvocationContext,
     MockAdapter,
     NethVoicePhonebookAdapter,
@@ -702,6 +703,316 @@ async def test_nethvoice_health_maps_timeout_safely() -> None:
     assert result.safe_message == "The upstream application timed out"
 
 
+@pytest.mark.asyncio
+async def test_hubspot_contacts_adapter_normalizes_search_results() -> None:
+    seen_requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "total": 1,
+                "results": [
+                    {
+                        "id": "123",
+                        "properties": {
+                            "firstname": "Maria",
+                            "lastname": "Rossi",
+                            "email": "maria@example.test",
+                            "company": "Acme",
+                            "phone": "+390****2233",
+                            "jobtitle": "Sales Manager",
+                        },
+                    }
+                ],
+            },
+        )
+
+    adapter = HubSpotContactsAdapter(transport=httpx.MockTransport(handler))
+
+    result = await adapter.invoke(
+        hubspot_capability_stub(),
+        {"query": "Maria", "limit": 10},
+        invocation_context(provider_type="hubspot", operation="contacts.search"),
+        SecretMaterial(secret_type="bearer_token", value="hubspot-token"),
+    )
+
+    assert result.status == "ok"
+    assert result.upstream_status == 200
+    assert result.data == {
+        "contacts": [
+            {
+                "id": "123",
+                "display_name": "Maria Rossi",
+                "email": "maria@example.test",
+                "company": "Acme",
+                "phone": "+390****2233",
+                "job_title": "Sales Manager",
+                "source": "hubspot",
+            }
+        ]
+    }
+    assert len(seen_requests) == 1
+    assert seen_requests[0].url.path == "/crm/v3/objects/contacts/search"
+    assert seen_requests[0].headers["authorization"] == "Bearer hubspot-token"
+    body = json.loads(seen_requests[0].content.decode("utf-8"))
+    assert body == {
+        "query": "Maria",
+        "limit": 10,
+        "properties": ["email", "firstname", "lastname", "company", "phone", "jobtitle"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_hubspot_contacts_adapter_enforces_limit_and_filters_output() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "id": "1",
+                        "properties": {
+                            "firstname": "Mario",
+                            "lastname": "Rossi",
+                            "email": "mario@example.test",
+                            "company": "Acme",
+                            "phone": "+390****0001",
+                            "jobtitle": "CEO",
+                            "private_note": "hidden",
+                        },
+                    },
+                    {
+                        "id": "2",
+                        "properties": {
+                            "email": "maria@example.test",
+                            "company": "Beta",
+                        },
+                    },
+                    {
+                        "id": "3",
+                        "properties": {
+                            "firstname": "Marcello",
+                            "lastname": "Verdi",
+                        },
+                    },
+                ]
+            },
+        )
+
+    adapter = HubSpotContactsAdapter(transport=httpx.MockTransport(handler))
+
+    result = await adapter.invoke(
+        hubspot_capability_stub(maximum=2),
+        {"query": "Mar", "limit": 99},
+        invocation_context(provider_type="hubspot", operation="contacts.search"),
+        SecretMaterial(secret_type="bearer_token", value="hubspot-token"),
+    )
+
+    assert result.status == "ok"
+    assert result.data == {
+        "contacts": [
+            {
+                "id": "1",
+                "display_name": "Mario Rossi",
+                "email": "mario@example.test",
+                "company": "Acme",
+                "phone": "+390****0001",
+                "job_title": "CEO",
+                "source": "hubspot",
+            },
+            {
+                "id": "2",
+                "display_name": "maria@example.test",
+                "email": "maria@example.test",
+                "company": "Beta",
+                "phone": None,
+                "job_title": None,
+                "source": "hubspot",
+            },
+        ]
+    }
+    for contact in result.data["contacts"]:
+        assert set(contact) == {
+            "id",
+            "display_name",
+            "email",
+            "company",
+            "phone",
+            "job_title",
+            "source",
+        }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status_code", "expected_code", "retryable"),
+    [
+        (401, "upstream_unauthorized", False),
+        (403, "upstream_unauthorized", False),
+        (404, "upstream_not_found", False),
+        (429, "upstream_rate_limited", True),
+        (503, "upstream_error", True),
+    ],
+)
+async def test_hubspot_contacts_adapter_maps_upstream_status_errors(
+    status_code: int,
+    expected_code: str,
+    retryable: bool,
+) -> None:
+    adapter = HubSpotContactsAdapter(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(status_code, json={"hidden": "body"})
+        )
+    )
+
+    result = await adapter.invoke(
+        hubspot_capability_stub(),
+        {"query": "Mario"},
+        invocation_context(provider_type="hubspot", operation="contacts.search"),
+        SecretMaterial(secret_type="bearer_token", value="hubspot-token"),
+    )
+
+    assert result.status == "error"
+    assert result.error_code == expected_code
+    assert result.upstream_status == status_code
+    assert result.retryable is retryable
+    assert result.data == {}
+
+
+@pytest.mark.asyncio
+async def test_hubspot_contacts_adapter_rejects_unsupported_secret_before_call() -> None:
+    seen_requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        return httpx.Response(200, json={"results": []})
+
+    adapter = HubSpotContactsAdapter(transport=httpx.MockTransport(handler))
+
+    result = await adapter.invoke(
+        hubspot_capability_stub(),
+        {"query": "Mario"},
+        invocation_context(provider_type="hubspot", operation="contacts.search"),
+        SecretMaterial(secret_type="basic_auth", value="alice:password"),
+    )
+
+    assert result.status == "error"
+    assert result.error_code == "secret_type_unsupported"
+    assert seen_requests == []
+
+
+@pytest.mark.asyncio
+async def test_hubspot_contacts_adapter_rejects_oversized_payload() -> None:
+    adapter = HubSpotContactsAdapter(
+        max_response_bytes=32,
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {
+                            "id": "1",
+                            "properties": {
+                                "firstname": "Mario",
+                                "lastname": "Rossi",
+                            },
+                        }
+                    ]
+                },
+            )
+        ),
+    )
+
+    result = await adapter.invoke(
+        hubspot_capability_stub(),
+        {"query": "Mario"},
+        invocation_context(provider_type="hubspot", operation="contacts.search"),
+        SecretMaterial(secret_type="bearer_token", value="hubspot-token"),
+    )
+
+    assert result.status == "error"
+    assert result.error_code == "upstream_payload_too_large"
+    assert result.safe_message == "The upstream application response was too large"
+    assert result.upstream_status == 200
+
+
+@pytest.mark.asyncio
+async def test_hubspot_contacts_adapter_maps_invalid_payload() -> None:
+    adapter = HubSpotContactsAdapter(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"results": {}}))
+    )
+
+    result = await adapter.invoke(
+        hubspot_capability_stub(),
+        {"query": "Mario"},
+        invocation_context(provider_type="hubspot", operation="contacts.search"),
+        SecretMaterial(secret_type="bearer_token", value="hubspot-token"),
+    )
+
+    assert result.status == "error"
+    assert result.error_code == "upstream_invalid_response"
+    assert result.upstream_status == 200
+
+
+@pytest.mark.asyncio
+async def test_hubspot_health_checks_safe_endpoint_without_credentials() -> None:
+    seen_requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        return httpx.Response(401, json={"message": "hidden"})
+
+    adapter = HubSpotContactsAdapter(transport=httpx.MockTransport(handler))
+
+    result = await adapter.health(SimpleNamespace(base_url="https://api.hubapi.com"))
+
+    assert result.status == "ok"
+    assert result.safe_message == "The upstream application is reachable but requires credentials"
+    assert len(seen_requests) == 1
+    assert seen_requests[0].url.path == "/crm/v3/objects/contacts"
+    assert seen_requests[0].url.params["limit"] == "1"
+    assert seen_requests[0].url.params["properties"] == "email"
+    assert "authorization" not in seen_requests[0].headers
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status_code", "expected_message"),
+    [
+        (404, "The upstream HubSpot contacts endpoint was not found"),
+        (429, "The upstream application rate limit was reached"),
+        (503, "The upstream application returned an error"),
+    ],
+)
+async def test_hubspot_health_maps_unavailable_responses_safely(
+    status_code: int,
+    expected_message: str,
+) -> None:
+    adapter = HubSpotContactsAdapter(
+        transport=httpx.MockTransport(lambda request: httpx.Response(status_code, text="hidden"))
+    )
+
+    result = await adapter.health(SimpleNamespace(base_url="https://api.hubapi.com"))
+
+    assert result.status == "error"
+    assert result.safe_message == expected_message
+
+
+@pytest.mark.asyncio
+async def test_hubspot_health_maps_timeout_safely() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow upstream", request=request)
+
+    adapter = HubSpotContactsAdapter(transport=httpx.MockTransport(handler))
+
+    result = await adapter.health(SimpleNamespace(base_url="https://api.hubapi.com"))
+
+    assert result.status == "error"
+    assert result.safe_message == "The upstream application timed out"
+
+
 def capability_stub(
     *,
     adapter_id: str = "nethvoice",
@@ -733,6 +1044,25 @@ def nextcloud_capability_stub(*, maximum: int = 50, risk_class: str = "read_only
         provider_type="nextcloud",
         adapter="nextcloud",
         operation="files.search",
+        risk_class=risk_class,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "minLength": 1},
+                "limit": {"type": "integer", "minimum": 1, "maximum": maximum},
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    )
+
+
+def hubspot_capability_stub(*, maximum: int = 50, risk_class: str = "read_only") -> Any:
+    return SimpleNamespace(
+        id="hubspot.contacts.search",
+        provider_type="hubspot",
+        adapter="hubspot",
+        operation="contacts.search",
         risk_class=risk_class,
         input_schema={
             "type": "object",

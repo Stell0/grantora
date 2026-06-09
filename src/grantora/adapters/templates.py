@@ -136,9 +136,68 @@ NEXTCLOUD_FILES_SEARCH_TEMPLATE = CapabilityTemplate(
 )
 
 
+HUBSPOT_CONTACTS_SEARCH_TEMPLATE = CapabilityTemplate(
+    id="hubspot.contacts.search",
+    name="Search contacts",
+    version=1,
+    provider_type="hubspot",
+    adapter="hubspot",
+    operation="contacts.search",
+    auth_mode="user",
+    risk_class="read_only",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "minLength": 1},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+        },
+        "required": ["query"],
+        "additionalProperties": False,
+    },
+    output_schema={
+        "type": "object",
+        "properties": {
+            "contacts": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "display_name": {"type": "string"},
+                        "email": {"type": ["string", "null"]},
+                        "company": {"type": ["string", "null"]},
+                        "phone": {"type": ["string", "null"]},
+                        "job_title": {"type": ["string", "null"]},
+                        "source": {"type": "string", "const": "hubspot"},
+                    },
+                    "required": [
+                        "id",
+                        "display_name",
+                        "email",
+                        "company",
+                        "phone",
+                        "job_title",
+                        "source",
+                    ],
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["contacts"],
+        "additionalProperties": False,
+    },
+    required_secret_types=("bearer_token",),
+    upstream_permissions=("crm.objects.contacts.read",),
+)
+
+
 CAPABILITY_TEMPLATES = {
     template.id: template
-    for template in (NETHVOICE_PHONEBOOK_SEARCH_TEMPLATE, NEXTCLOUD_FILES_SEARCH_TEMPLATE)
+    for template in (
+        HUBSPOT_CONTACTS_SEARCH_TEMPLATE,
+        NETHVOICE_PHONEBOOK_SEARCH_TEMPLATE,
+        NEXTCLOUD_FILES_SEARCH_TEMPLATE,
+    )
 }
 
 

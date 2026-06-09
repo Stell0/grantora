@@ -129,6 +129,14 @@ Adapters may reject incompatible secret types but must not fall back to hard-cod
 - Keep health checks credential-free unless a future contract says otherwise, and return only safe reachability status.
 - Tests must use mock transports or mock upstream services only. No adapter test may contact a real business service.
 
+## Current Built-In Real Adapters
+
+- `nethvoice.phonebook.search`: read-only search over the NethVoice phonebook API.
+- `nextcloud.files.search`: read-only file search against the Nextcloud OCS search provider.
+- `hubspot.contacts.search`: read-only contact search against HubSpot CRM contacts via bearer-token auth only.
+
+The HubSpot adapter is intentionally narrow. It only exposes curated contact search, always posts to `/crm/v3/objects/contacts/search`, always allowlists the returned fields (`id`, `display_name`, `email`, `company`, `phone`, `job_title`, `source`), and never exposes arbitrary HubSpot paths or raw response payloads to agents.
+
 ## Adding A New Adapter
 
 1. Add the provider and capability contract to [CONTRACTS.md](CONTRACTS.md).
